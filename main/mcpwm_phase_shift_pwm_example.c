@@ -9,6 +9,13 @@
  *
  * 2021-05-21 Ulrich Lukas
  */
+
+ /* Modified to support ESP32S3, tested with ESP32-S3-DevKitC-1
+  *
+  * @note This depends on the ESP-IDF SDK v4.4.7 version.
+  *
+  * 2024-05-24 Yoonki Kim
+  */
 #include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
@@ -17,16 +24,18 @@
 
 #include "driver/mcpwm.h"
 #include "driver/gpio.h"
+#include "led_strip.h"
 #include "soc/mcpwm_periph.h"
 
 #include "ps_pwm.h"
-
 
 void initialize_phase_shift_pwm()
 {
     ///////////////////////////// Configuration ////////////////////////////////
     // MCPWM unit can be [0,1]
     mcpwm_unit_t mcpwm_num = MCPWM_UNIT_0;
+
+#ifdef CONFIG_IDF_TARGET_ESP32
     // GPIO config for PWM output
     gpio_num_t gpio_pwm0a_out = GPIO_NUM_27; // PWM0A := LEAD leg, Low Side
     gpio_num_t gpio_pwm0b_out = GPIO_NUM_26; // PWM0B := LEAD leg, High Side
@@ -34,6 +43,16 @@ void initialize_phase_shift_pwm()
     gpio_num_t gpio_pwm1b_out = GPIO_NUM_33; // PWM1B := LAG leg, High Side
     // Shutdown/fault input for PWM outputs
     gpio_num_t gpio_fault_shutdown = GPIO_NUM_4;
+#elif CONFIG_IDF_TARGET_ESP32S3
+    // GPIO config for PWM output
+    gpio_num_t gpio_pwm0a_out = GPIO_NUM_5; // DRV_B, PWM0A := LEAD leg, Low Side
+    gpio_num_t gpio_pwm0b_out = GPIO_NUM_4; // DRV_A, PWM0B := LEAD leg, High Side
+    gpio_num_t gpio_pwm1a_out = GPIO_NUM_7; // DRV_D, PWM1A := LAG leg, Low Side
+    gpio_num_t gpio_pwm1b_out = GPIO_NUM_6; // DRV_C, PWM1B := LAG leg, High Side
+    // Shutdown/fault input for PWM outputs
+    gpio_num_t gpio_fault_shutdown = GPIO_NUM_8;    // OCP_PULSE, Pulse by Pulse protect
+#endif
+
     // Active low / active high selection for fault input pin
     mcpwm_fault_input_level_t fault_pin_active_level = MCPWM_LOW_LEVEL_TGR;
     // Define here if the output pins shall be forced low or high
@@ -92,10 +111,16 @@ void mcpwm_example_ps_pwm(void *arg)
 {
     initialize_phase_shift_pwm();
 
+#ifdef CONFIG_IDF_TARGET_ESP32
     #define LED_PIN GPIO_NUM_2
-    bool led_status = 0;
     gpio_pad_select_gpio(LED_PIN);
     gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+#elif CONFIG_IDF_TARGET_ESP32S3
+    #define LED_PIN GPIO_NUM_48
+    led_strip_t *pStrip_a;
+    pStrip_a = led_strip_init(0, LED_PIN, 1);
+    pStrip_a->clear(pStrip_a, 50);
+#endif
 
     while (1) {
 
@@ -105,15 +130,22 @@ void mcpwm_example_ps_pwm(void *arg)
         // Switch frequency from time to time just for demonstration
         // vTaskDelay(3*configTICK_RATE_HZ);
         vTaskDelay(3000 / portTICK_PERIOD_MS);
-        led_status  = !led_status;
-        gpio_set_level(LED_PIN, led_status);
+#ifdef CONFIG_IDF_TARGET_ESP32
+        gpio_set_level(LED_PIN, 1);
+#elif CONFIG_IDF_TARGET_ESP32S3         
+        pStrip_a->set_pixel(pStrip_a, 0, 16, 16, 16);            
+        pStrip_a->refresh(pStrip_a, 100);
+#endif
         printf("pspwm_set_frequency 100kHz... \n");
         pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
 
         // vTaskDelay(3*configTICK_RATE_HZ);        
         vTaskDelay(3000 / portTICK_PERIOD_MS);
-        led_status  = !led_status;
-        gpio_set_level(LED_PIN, led_status);
+#ifdef CONFIG_IDF_TARGET_ESP32
+        gpio_set_level(LED_PIN, 0);
+#elif CONFIG_IDF_TARGET_ESP32S3
+            pStrip_a->clear(pStrip_a, 50);
+#endif
         printf("pspwm_set_frequency 200kHz... \n");
         pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz
     }
