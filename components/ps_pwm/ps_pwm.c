@@ -10,6 +10,14 @@
   *
   * 2021-05-21 Ulrich Lukas
   */
+
+ /* This source code has been modified to support ESP-IDF v4.4.7 version.
+  * Therefore, this code does not support v4.3.x.
+  *
+  * @note This depends on the ESP-IDF SDK v4.4.7 version.
+  *
+  * 2024-05-24 Yoonki Kim
+  */
 #include "freertos/FreeRTOS.h"
 #include "soc/mcpwm_struct.h"
 
@@ -232,16 +240,16 @@ esp_err_t pspwm_set_frequency(mcpwm_unit_t mcpwm_num,
     portENTER_CRITICAL(&mcpwm_spinlock);
     // Register 16.17: PWM_GEN0_TSTMP_A_REG (0x0040) etc.
     // also for GEN1 with different register offset
-    module->channel[MCPWM_TIMER_0].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_0_a;
+    module->operators[MCPWM_TIMER_0].timestamp[MCPWM_OPR_A].gen = cmpr_0_a;
     // Register 16.2: PWM_TIMER0_CFG0_REG (0x0004) etc.
-    module->timer[MCPWM_TIMER_0].period.period = timer_top;
+    module->timer[MCPWM_TIMER_0].timer_cfg0.timer_period = timer_top;
     // Same for timer 1
-    module->channel[MCPWM_TIMER_1].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_1_a;
-    module->timer[MCPWM_TIMER_1].period.period = timer_top;
+    module->operators[MCPWM_TIMER_1].timestamp[MCPWM_OPR_A].gen = cmpr_1_a;
+    module->timer[MCPWM_TIMER_1].timer_cfg0.timer_period = timer_top;
     // Phase shift value is based on timer 0 period setting but intentionally
     // only set for timer 1. Timer 0 is the reference phase.
     // Register 16.8: PWM_TIMER1_SYNC_REG (0x001c)
-    module->timer[MCPWM_TIMER_1].sync.timer_phase = phase_setval;
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_phase = phase_setval;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     ESP_LOGD(TAG, "Timer TOP is now: %d", timer_top);
     ESP_LOGD(TAG, "cmpr_0_a register value: %d", cmpr_0_a);
@@ -278,7 +286,7 @@ esp_err_t pspwm_set_deadtimes(mcpwm_unit_t mcpwm_num,
     uint32_t lag_red_reg = (uint32_t)(lag_red * s_clk_conf.base_clk);
     uint32_t lag_fed_reg = (uint32_t)(lag_fed * s_clk_conf.base_clk);
     float half_period = 0.5f * s_clk_conf.timer_clk / setpoints->frequency;
-    //float half_period = 0.5 * (module->timer[MCPWM_TIMER_0].period.period + 1);
+    //float half_period = 0.5 * (module->timer[MCPWM_TIMER_0].timer_cfg0.timer_period + 1);
     ESP_LOGD(TAG, "Limit value for (red + fed) in ns: %f",
         (1e9f*2.0f*half_period - 1.0f) / s_clk_conf.base_clk);
     uint32_t cmpr_0_a = (uint32_t)(
@@ -298,19 +306,19 @@ esp_err_t pspwm_set_deadtimes(mcpwm_unit_t mcpwm_num,
     mcpwm_dev_t* const module = MCPWM[mcpwm_num];
     portENTER_CRITICAL(&mcpwm_spinlock);
     // Register 16.25: PWM_DT0_RED_CFG_REG (0x0060) etc.
-    module->channel[MCPWM_TIMER_0].db_red_cfg.red = lead_red_reg;
+    module->operators[MCPWM_TIMER_0].dt_red_cfg.dt_red = lead_red_reg;
     // Register 16.24: PWM_DT0_FED_CFG_REG (0x005c) etc.
-    module->channel[MCPWM_TIMER_0].db_fed_cfg.fed = lead_fed_reg;
-    module->channel[MCPWM_TIMER_1].db_red_cfg.red = lag_red_reg;
-    module->channel[MCPWM_TIMER_1].db_fed_cfg.fed = lag_fed_reg;
+    module->operators[MCPWM_TIMER_0].dt_fed_cfg.dt_fed = lead_fed_reg;
+    module->operators[MCPWM_TIMER_1].dt_red_cfg.dt_red = lag_red_reg;
+    module->operators[MCPWM_TIMER_1].dt_fed_cfg.dt_fed = lag_fed_reg;
     // Register 16.17: PWM_GEN0_TSTMP_A_REG (0x0040) etc.
     // also for GEN1 with different register offset
-    module->channel[MCPWM_TIMER_0].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_0_a;
-    module->channel[MCPWM_TIMER_1].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_1_a;
+    module->operators[MCPWM_TIMER_0].timestamp[MCPWM_OPR_A].gen = cmpr_0_a;
+    module->operators[MCPWM_TIMER_1].timestamp[MCPWM_OPR_A].gen = cmpr_1_a;
     // Phase shift value is based on timer 0 period setting but intentionally
     // only set for timer 1. Timer 0 is the reference phase.
     // Register 16.8: PWM_TIMER1_SYNC_REG (0x001c)
-    module->timer[MCPWM_TIMER_1].sync.timer_phase = phase_setval;
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_phase = phase_setval;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     ESP_LOGD(TAG, "cmpr_0_a register value: %d", cmpr_0_a);
     ESP_LOGD(TAG, "cmpr_1_a register value: %d", cmpr_1_a);
@@ -352,18 +360,18 @@ esp_err_t pspwm_set_ps_duty(mcpwm_unit_t mcpwm_num,
     mcpwm_dev_t* const module = MCPWM[mcpwm_num];
     portENTER_CRITICAL(&mcpwm_spinlock);
     // For up-counting mode, output waveform period is actually timer TOP + 1
-    uint32_t curr_period = module->timer[MCPWM_TIMER_0].period.period + 1;
+    uint32_t curr_period = module->timer[MCPWM_TIMER_0].timer_cfg0.timer_period + 1;
     uint32_t phase_setval = (uint32_t)(curr_period * ps_duty * 0.5f);
     // Phase shift register must not be set above cmpr_1_a value, otherwise
     // the compare event will be missed.
-    uint32_t cmpr_1_a = module->channel[MCPWM_TIMER_1].cmpr_value[MCPWM_OPR_A].cmpr_val;
+    uint32_t cmpr_1_a = module->operators[MCPWM_TIMER_1].timestamp[MCPWM_OPR_A].gen;
     if (phase_setval > cmpr_1_a) {
         phase_setval = cmpr_1_a;
     }
     // Phase shift value is based on timer 0 period setting but intentionally
     // only set for timer 1. Timer 0 is the reference phase.
     // Register 16.8: PWM_TIMER1_SYNC_REG (0x001c)
-    module->timer[MCPWM_TIMER_1].sync.timer_phase = phase_setval;
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_phase = phase_setval;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     ESP_LOGD(TAG, "Phase register set to: %d", phase_setval);
     ESP_LOGD(TAG, "cmpr_1_a set to: %d", cmpr_1_a);
@@ -381,7 +389,7 @@ bool pspwm_get_hw_fault_shutdown_present(mcpwm_unit_t mcpwm_num) {
     // Register 16.58: PWM_FAULT_DETECT_REG (0x00e4)
     //bool status = (bool)MCPWM[mcpwm_num]->fault_detect.event_f0;
     // Register 16.29: PWM_FH0_STATUS_REG (0x0070)
-    status = (bool)MCPWM[mcpwm_num]->channel[MCPWM_TIMER_0].tz_status.ost_on;
+    status = (bool)MCPWM[mcpwm_num]->operators[MCPWM_TIMER_0].fh_status.fh_ost_on;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     return status;
 }
@@ -412,10 +420,10 @@ esp_err_t pspwm_disable_output(mcpwm_unit_t mcpwm_num)
     portENTER_CRITICAL(&mcpwm_spinlock);
     // Toggle triggers the fault event
     // Register 16.28: PWM_FH0_CFG1_REG (0x006c)
-    module->channel[MCPWM_TIMER_0].tz_cfg1.force_ost = 1;
-    module->channel[MCPWM_TIMER_0].tz_cfg1.force_ost = 0;
-    module->channel[MCPWM_TIMER_1].tz_cfg1.force_ost = 1;
-    module->channel[MCPWM_TIMER_1].tz_cfg1.force_ost = 0;
+    module->operators[MCPWM_TIMER_0].fh_cfg1.fh_force_ost = 1;
+    module->operators[MCPWM_TIMER_0].fh_cfg1.fh_force_ost = 0;
+    module->operators[MCPWM_TIMER_1].fh_cfg1.fh_force_ost = 1;
+    module->operators[MCPWM_TIMER_1].fh_cfg1.fh_force_ost = 0;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     // Update global state
     pspwm_setpoint_t* setpoints = s_setpoints[mcpwm_num];
@@ -435,16 +443,16 @@ esp_err_t pspwm_resync_enable_output(mcpwm_unit_t mcpwm_num)
         return ESP_FAIL;
     }
     // Toggle triggers the sync.
-    module->timer[MCPWM_TIMER_0].sync.sync_sw = 1;
-    module->timer[MCPWM_TIMER_0].sync.sync_sw = 0;
-    module->timer[MCPWM_TIMER_1].sync.sync_sw = 1;
-    module->timer[MCPWM_TIMER_1].sync.sync_sw = 0;
+    module->timer[MCPWM_TIMER_0].timer_sync.timer_sync_sw = 1;
+    module->timer[MCPWM_TIMER_0].timer_sync.timer_sync_sw = 0;
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_sync_sw = 1;
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_sync_sw = 0;
     // Toggle clears the fault event. XOR is somehow not reliable here.
     // Register 16.28: PWM_FH0_CFG1_REG (0x006c)
-    module->channel[MCPWM_TIMER_0].tz_cfg1.clr_ost = 1;
-    module->channel[MCPWM_TIMER_0].tz_cfg1.clr_ost = 0;
-    module->channel[MCPWM_TIMER_1].tz_cfg1.clr_ost = 1;
-    module->channel[MCPWM_TIMER_1].tz_cfg1.clr_ost = 0;
+    module->operators[MCPWM_TIMER_0].fh_cfg1.fh_clr_ost = 1;
+    module->operators[MCPWM_TIMER_0].fh_cfg1.fh_clr_ost = 0;
+    module->operators[MCPWM_TIMER_1].fh_cfg1.fh_clr_ost = 1;
+    module->operators[MCPWM_TIMER_1].fh_cfg1.fh_clr_ost = 0;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     // Update global state
     pspwm_setpoint_t* setpoints = s_setpoints[mcpwm_num];
@@ -515,76 +523,76 @@ static void pspwm_register_base_setup(mcpwm_unit_t mcpwm_num) {
     // Timer and deadtime module clock prescaler/divider configuration
     // Datasheet 16.1: PWM_CLK_CFG_REG (0x0000)
     // Hardware prescales by register value plus one, thus subtracting it here
-    module->clk_cfg.prescale = s_clk_conf.base_clk_prescale - 1;
+    module->clk_cfg.clk_prescale = s_clk_conf.base_clk_prescale - 1;
 
     for (int timer_i=0; timer_i < 2; ++timer_i){
         // Datasheet 16.2: PWM_TIMER0_CFG0_REG (0x0004) etc.
         // Hardware prescales by register value plus one, thus subtracting it here
-        module->timer[timer_i].period.prescale = s_clk_conf.timer_clk_prescale - 1;
+        module->timer[timer_i].timer_cfg0.timer_prescale = s_clk_conf.timer_clk_prescale - 1;
         // Datasheet 16.3: PWM_TIMER0_CFG1_REG (0x0008) etc.
-        module->timer[timer_i].mode.mode = MCPWM_UP_COUNTER;
+        module->timer[timer_i].timer_cfg1.timer_mod = MCPWM_UP_COUNTER;
         // 2 => Set output high; 1 => set output low
         // Datasheet 16.21: PWM_GEN0_A_REG (0x0050) etc.
-        module->channel[timer_i].generator[MCPWM_OPR_A].utez = 2;
-        module->channel[timer_i].generator[MCPWM_OPR_A].utea = 1;
-        // module->channel[timer_i].generator[MCPWM_OPR_A].dtea = 2;
+        module->operators[timer_i].generator[MCPWM_OPR_A].gen_utez = 2;
+        module->operators[timer_i].generator[MCPWM_OPR_A].gen_utea = 1;
+        // module->operators[timer_i].generator[MCPWM_OPR_A].gen_dtea = 2;
         // Datasheet 16.21: PWM_GEN0_B_REG (0x0054) etc.
-        // module->channel[timer_i].generator[MCPWM_OPR_B].utez = 1;
-        // module->channel[timer_i].generator[MCPWM_OPR_B].uteb = 2;
-        // module->channel[timer_i].generator[MCPWM_OPR_B].dteb = 1;
+        // module->operators[timer_i].generator[MCPWM_OPR_B].gen_utez = 1;
+        // module->operators[timer_i].generator[MCPWM_OPR_B].gen_uteb = 2;
+        // module->operators[timer_i].generator[MCPWM_OPR_B].gen_dteb = 1;
         /* Dead-Band Generator Set-Up
          */
         // Register 16.23: PWM_DT0_CFG_REG (0x0058) etc.
-        module->channel[timer_i].db_cfg.clk_sel = 0; // MCPWM_BASE_CLK (PWM_clk)
-        module->channel[timer_i].db_cfg.b_outbypass = 0; //S0
-        module->channel[timer_i].db_cfg.a_outbypass = 0; //S1
-        module->channel[timer_i].db_cfg.red_outinvert = 0; //S2
-        module->channel[timer_i].db_cfg.fed_outinvert = 1; //S3
-        // module->channel[timer_i].db_cfg.red_insel = 0; //S4
-        // module->channel[timer_i].db_cfg.fed_insel = 0; //S5
-        // module->channel[timer_i].db_cfg.a_outswap = 0; //S6
-        // module->channel[timer_i].db_cfg.b_outswap = 0; //S7
-        // module->channel[timer_i].db_cfg.deb_mode = 0;  //S8
+        module->operators[timer_i].dt_cfg.dt_clk_sel = 0; // MCPWM_BASE_CLK (PWM_clk)
+        module->operators[timer_i].dt_cfg.dt_b_outbypass = 0; //S0
+        module->operators[timer_i].dt_cfg.dt_a_outbypass = 0; //S1
+        module->operators[timer_i].dt_cfg.dt_red_outinvert = 0; //S2
+        module->operators[timer_i].dt_cfg.dt_fed_outinvert = 1; //S3
+        // module->operators[timer_i].dt_cfg.dt_red_insel = 0; //S4
+        // module->operators[timer_i].dt_cfg.dt_fed_insel = 0; //S5
+        // module->operators[timer_i].dt_cfg.dt_a_outswap = 0; //S6
+        // module->operators[timer_i].dt_cfg.dt_b_outswap = 0; //S7
+        // module->operators[timer_i].dt_cfg.dt_deb_mode = 0;  //S8
     }
     // Configure PWM generator to re-initialise outputs not only on UETZ but
     // also on sync event. This is because the UTEZ event is missed on sync
     // when phase register (preload value) is changed from low values
     // Register 17.19: PWM_GEN0_CFG0_REG (0x0048)
-    module->channel[MCPWM_TIMER_1].gen_cfg0.t0_sel = 3; // At sync
-    module->channel[MCPWM_TIMER_1].generator[MCPWM_OPR_A].ut0 = 2; // Set high
+    module->operators[MCPWM_TIMER_1].gen_cfg0.gen_t0_sel = 3; // At sync
+    module->operators[MCPWM_TIMER_1].generator[MCPWM_OPR_A].gen_ut0 = 2; // Set high
     // Update/swap shadow registers at timer equals zero for timer0,
     // update at sync for timer1.
     // Datasheet 16.2: PWM_TIMER0_CFG0_REG (0x0004) etc.
-    module->timer[MCPWM_TIMER_0].period.upmethod = 1; // TEZ
-    module->timer[MCPWM_TIMER_1].period.upmethod = 2; // Literal 2 correct: At sync
+    module->timer[MCPWM_TIMER_0].timer_cfg0.timer_period_upmethod = 1; // TEZ
+    module->timer[MCPWM_TIMER_1].timer_cfg0.timer_period_upmethod = 2; // Literal 2 correct: At sync
     // Datasheet 16.16: PWM_GEN0_STMP_CFG_REG (0x003c) etc.
-    module->channel[MCPWM_TIMER_0].cmpr_cfg.a_upmethod = 1; // TEZ
-    module->channel[MCPWM_TIMER_0].cmpr_cfg.b_upmethod = 1; // TEZ
-    module->channel[MCPWM_TIMER_1].cmpr_cfg.a_upmethod = 1ul<<2; // At sync
-    module->channel[MCPWM_TIMER_1].cmpr_cfg.b_upmethod = 1ul<<2; // At sync
+    module->operators[MCPWM_TIMER_0].gen_stmp_cfg.gen_a_upmethod = 1; // TEZ
+    module->operators[MCPWM_TIMER_0].gen_stmp_cfg.gen_b_upmethod = 1; // TEZ
+    module->operators[MCPWM_TIMER_1].gen_stmp_cfg.gen_a_upmethod = 1ul<<2; // At sync
+    module->operators[MCPWM_TIMER_1].gen_stmp_cfg.gen_b_upmethod = 1ul<<2; // At sync
     // Register 16.23: PWM_DT0_CFG_REG (0x0058) etc.
-    module->channel[MCPWM_TIMER_0].db_cfg.fed_upmethod = 1; // TEZ
-    module->channel[MCPWM_TIMER_1].db_cfg.red_upmethod = 1ul<<2; // At sync
+    module->operators[MCPWM_TIMER_0].dt_cfg.dt_fed_upmethod = 1; // TEZ
+    module->operators[MCPWM_TIMER_1].dt_cfg.dt_red_upmethod = 1ul<<2; // At sync
     // Datasheet 16.15: PWM_OPERATOR_TIMERSEL_REG (0x0038)
-    module->timer_sel.operator0_sel = 0;
-    module->timer_sel.operator1_sel = 1;
-    // module->timer_sel.operator2_sel = 2;
+    module->operator_timersel.operator0_timersel = 0;
+    module->operator_timersel.operator1_timersel = 1;
+    // module->operator_timersel.operator2_timersel = 2;
     // SYNC input coupling setup: Timer 1 input coupled to timer 0 sync output
     // Datasheet 16.14: PWM_TIMER_SYNCI_CFG_REG (0x0034)
-    module->timer_synci_cfg.t0_in_sel = 0; // None
-    module->timer_synci_cfg.t1_in_sel = 1; // timer0 sync out
+    module->timer_synci_cfg.timer0_syncisel = 0; // None
+    module->timer_synci_cfg.timer1_syncisel = 1; // timer0 sync out
     // SYNC input and output configuration for both timers
     // Datasheet 16.4: PWM_TIMER0_SYNC_REG (0x000c)
-    module->timer[MCPWM_TIMER_0].sync.in_en = 0; // Off
+    module->timer[MCPWM_TIMER_0].timer_sync.timer_synci_en = 0; // Off
     // Generate sync output at timer equals zero of first timer
-    module->timer[MCPWM_TIMER_0].sync.out_sel = 1;
+    module->timer[MCPWM_TIMER_0].timer_sync.timer_synco_sel = 1;
     // Second timer is synchronized to first timer
     // Datasheet 16.8: PWM_TIMER1_SYNC_REG (0x001c)
-    module->timer[MCPWM_TIMER_1].sync.in_en = 1; // On
-    module->timer[MCPWM_TIMER_1].sync.out_sel = 3; // Off
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_synci_en = 1; // On
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_synco_sel = 3; // Off
     ///// Start continuously running mode /////
-    module->timer[MCPWM_TIMER_0].mode.start = 2;
-    module->timer[MCPWM_TIMER_1].mode.start = 2;
+    module->timer[MCPWM_TIMER_0].timer_cfg1.timer_start = 2;
+    module->timer[MCPWM_TIMER_1].timer_cfg1.timer_start = 2;
     ///// Force update on all registers for settings to take effect /////
     // Datasheet 17.68: PWM_UPDATE_CFG_REG (0x010c)
     module->update_cfg.global_up_en = 1;
@@ -606,25 +614,25 @@ static esp_err_t pspwm_setup_fault_handler_module(
     portENTER_CRITICAL(&mcpwm_spinlock);
     // Datasheet 17.27: PWM_FH0_CFG0_REG (0x0068)
     // Enable sw-forced one-shot tripzone action
-    module->channel[MCPWM_TIMER_0].tz_cfg0.sw_ost = 1;
-    module->channel[MCPWM_TIMER_1].tz_cfg0.sw_ost = 1;
+    module->operators[MCPWM_TIMER_0].fh_cfg0.fh_sw_ost = 1;
+    module->operators[MCPWM_TIMER_1].fh_cfg0.fh_sw_ost = 1;
     // Uncomment to enable sw-forced cycle-by-cycle tripzone action
-    //module->channel[timer_i].tz_cfg0.sw_cbc = 1;
+    //module->operators[timer_i].fh_cfg0.fh_sw_cbc = 1;
     // Enable hardware-forced (event f0) one-shot tripzone action
-    module->channel[MCPWM_TIMER_0].tz_cfg0.f0_ost = 1;
-    module->channel[MCPWM_TIMER_1].tz_cfg0.f0_ost = 1;
+    module->operators[MCPWM_TIMER_0].fh_cfg0.fh_f0_ost = 1;
+    module->operators[MCPWM_TIMER_1].fh_cfg0.fh_f0_ost = 1;
     // Uncomment to enable hardware (event f0) cycle-by-cycle tripzone action
-    //module->channel[timer_i].tz_cfg0.f0_cbc = 1;
+    //module->operators[timer_i].fh_cfg0.fh_f0_cbc = 1;
     // Configure the kind of action (pull up / pull down) for the lag bridge leg:
-    module->channel[MCPWM_TIMER_1].tz_cfg0.a_ost_d = disable_action_lag_leg;
-    module->channel[MCPWM_TIMER_1].tz_cfg0.a_ost_u = disable_action_lag_leg;
-    module->channel[MCPWM_TIMER_1].tz_cfg0.b_ost_d = disable_action_lag_leg;
-    module->channel[MCPWM_TIMER_1].tz_cfg0.b_ost_u = disable_action_lag_leg;
+    module->operators[MCPWM_TIMER_1].fh_cfg0.fh_a_ost_d = disable_action_lag_leg;
+    module->operators[MCPWM_TIMER_1].fh_cfg0.fh_a_ost_u = disable_action_lag_leg;
+    module->operators[MCPWM_TIMER_1].fh_cfg0.fh_b_ost_d = disable_action_lag_leg;
+    module->operators[MCPWM_TIMER_1].fh_cfg0.fh_b_ost_u = disable_action_lag_leg;
     // Lead leg might have a different configuration, e.g. stay at last output level
-    module->channel[MCPWM_TIMER_0].tz_cfg0.a_ost_d = disable_action_lead_leg;
-    module->channel[MCPWM_TIMER_0].tz_cfg0.a_ost_u = disable_action_lead_leg;
-    module->channel[MCPWM_TIMER_0].tz_cfg0.b_ost_d = disable_action_lead_leg;
-    module->channel[MCPWM_TIMER_0].tz_cfg0.b_ost_u = disable_action_lead_leg;
+    module->operators[MCPWM_TIMER_0].fh_cfg0.fh_a_ost_d = disable_action_lead_leg;
+    module->operators[MCPWM_TIMER_0].fh_cfg0.fh_a_ost_u = disable_action_lead_leg;
+    module->operators[MCPWM_TIMER_0].fh_cfg0.fh_b_ost_d = disable_action_lead_leg;
+    module->operators[MCPWM_TIMER_0].fh_cfg0.fh_b_ost_u = disable_action_lead_leg;
     // Set MCPWM interrupt generator enable mask
     // Register 16.69: INT_ENA_PWM_REG (0x0110)
     //module->int_ena.tz0_ost_int_ena = 1;
@@ -820,20 +828,20 @@ esp_err_t pspwm_up_down_ctr_mode_set_frequency(mcpwm_unit_t mcpwm_num,
     portENTER_CRITICAL(&mcpwm_spinlock);
     // Register 16.17: PWM_GEN0_TSTMP_A_REG (0x0040) etc.
     // also for GEN1 with different register offset
-    module->channel[MCPWM_TIMER_0].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_lead_a;
+    module->operators[MCPWM_TIMER_0].timestamp[MCPWM_OPR_A].gen = cmpr_lead_a;
     // Register 16.18: PWM_GEN0_TSTMP_B_REG (0x0044) etc.
     // also for GEN1 with different register offset
-    module->channel[MCPWM_TIMER_0].cmpr_value[MCPWM_OPR_B].cmpr_val = cmpr_lead_b;
+    module->operators[MCPWM_TIMER_0].timestamp[MCPWM_OPR_B].gen = cmpr_lead_b;
     // Register 16.2: PWM_TIMER0_CFG0_REG (0x0004) etc.
-    module->timer[MCPWM_TIMER_0].period.period = timer_top;
+    module->timer[MCPWM_TIMER_0].timer_cfg0.timer_period = timer_top;
     // Same for timer 1
-    module->channel[MCPWM_TIMER_1].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_lag_a;
-    module->channel[MCPWM_TIMER_1].cmpr_value[MCPWM_OPR_B].cmpr_val = cmpr_lag_b;
-    module->timer[MCPWM_TIMER_1].period.period = timer_top;
+    module->operators[MCPWM_TIMER_1].timestamp[MCPWM_OPR_A].gen = cmpr_lag_a;
+    module->operators[MCPWM_TIMER_1].timestamp[MCPWM_OPR_B].gen = cmpr_lag_b;
+    module->timer[MCPWM_TIMER_1].timer_cfg0.timer_period = timer_top;
     // Phase shift value is based on timer 0 period setting but intentionally
     // only set for timer 1. Timer 0 is the reference phase.
     // Register 16.8: PWM_TIMER1_SYNC_REG (0x001c)
-    module->timer[MCPWM_TIMER_1].sync.timer_phase = phase_setval;
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_phase = phase_setval;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     ESP_LOGD(TAG, "Timer TOP is now: %d", timer_top);
     ESP_LOGD(TAG, "cmpr_0_a register value: %d", cmpr_lead_a);
@@ -861,7 +869,7 @@ esp_err_t pspwm_up_down_ctr_mode_set_deadtimes(mcpwm_unit_t mcpwm_num,
     setpoints->lead_red = lead_dt;
     setpoints->lag_red = lag_dt;
     // PWM base period and duty cycle must be adjusted when changing dead-times
-    // uint32_t timer_top = module->timer[MCPWM_TIMER_0].period.period;
+    // uint32_t timer_top = module->timer[MCPWM_TIMER_0].timer_cfg0.timer_period;
     float half_period = 0.5f * s_clk_conf.timer_clk / setpoints->frequency;
     uint32_t timer_top = (uint32_t)half_period;
     uint32_t cmpr_lead_a = (uint32_t)(
@@ -874,13 +882,13 @@ esp_err_t pspwm_up_down_ctr_mode_set_deadtimes(mcpwm_unit_t mcpwm_num,
     portENTER_CRITICAL(&mcpwm_spinlock);
     // Register 16.17: PWM_GEN0_TSTMP_A_REG (0x0040) etc.
     // also for GEN1 with different register offset
-    module->channel[MCPWM_TIMER_0].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_lead_a;
+    module->operators[MCPWM_TIMER_0].timestamp[MCPWM_OPR_A].gen = cmpr_lead_a;
     // Register 16.18: PWM_GEN0_TSTMP_B_REG (0x0044) etc.
     // also for GEN1 with different register offset
-    module->channel[MCPWM_TIMER_0].cmpr_value[MCPWM_OPR_B].cmpr_val = cmpr_lead_b;
+    module->operators[MCPWM_TIMER_0].timestamp[MCPWM_OPR_B].gen = cmpr_lead_b;
     // Same for timer 1
-    module->channel[MCPWM_TIMER_1].cmpr_value[MCPWM_OPR_A].cmpr_val = cmpr_lag_a;
-    module->channel[MCPWM_TIMER_1].cmpr_value[MCPWM_OPR_B].cmpr_val = cmpr_lag_b;
+    module->operators[MCPWM_TIMER_1].timestamp[MCPWM_OPR_A].gen = cmpr_lag_a;
+    module->operators[MCPWM_TIMER_1].timestamp[MCPWM_OPR_B].gen = cmpr_lag_b;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     ESP_LOGD(TAG, "cmpr_0_a register value: %d", cmpr_lead_a);
     ESP_LOGD(TAG, "cmpr_0_b register value: %d", cmpr_lead_b);
@@ -903,7 +911,7 @@ esp_err_t pspwm_up_down_ctr_mode_set_ps_duty(mcpwm_unit_t mcpwm_num,
     setpoints->ps_duty = ps_duty;
     mcpwm_dev_t* const module = MCPWM[mcpwm_num];
     portENTER_CRITICAL(&mcpwm_spinlock);
-    uint32_t timer_top = module->timer[MCPWM_TIMER_0].period.period;
+    uint32_t timer_top = module->timer[MCPWM_TIMER_0].timer_cfg0.timer_period;
     uint32_t phase_setval = (uint32_t)(timer_top * ps_duty);
     // This must not be equal to timer_top, otherwise timer seems to stop.
     // Instead, this is UNDOCUMENTED in the reference manual:
@@ -915,7 +923,7 @@ esp_err_t pspwm_up_down_ctr_mode_set_ps_duty(mcpwm_unit_t mcpwm_num,
     // Phase shift value is based on timer 0 period setting but intentionally
     // only set for timer 1. Timer 0 is the reference phase.
     // Register 16.8: PWM_TIMER1_SYNC_REG (0x001c)
-    module->timer[MCPWM_TIMER_1].sync.timer_phase = phase_setval;
+    module->timer[MCPWM_TIMER_1].timer_sync.timer_phase = phase_setval;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     ESP_LOGD(TAG, "Phase register set to: %d", phase_setval);
     return ESP_OK;
@@ -937,13 +945,13 @@ static void pspwm_up_down_ctr_mode_register_base_setup(mcpwm_unit_t mcpwm_num) {
         module->timer[timer_i].mode.mode = MCPWM_UP_DOWN_COUNTER;
         // 2 => Set output high; 1 => set output low
         // Datasheet 16.21: PWM_GEN0_A_REG (0x0050) etc.
-        //module->channel[timer_i].generator[MCPWM_OPR_A].utez = 2;
-        module->channel[timer_i].generator[MCPWM_OPR_A].utea = 1;
-        module->channel[timer_i].generator[MCPWM_OPR_A].dtea = 2;
+        //module->operators[timer_i].generator[MCPWM_OPR_A].utez = 2;
+        module->operators[timer_i].generator[MCPWM_OPR_A].utea = 1;
+        module->operators[timer_i].generator[MCPWM_OPR_A].dtea = 2;
         // Datasheet 16.21: PWM_GEN0_B_REG (0x0054) etc.
-        //module->channel[timer_i].generator[MCPWM_OPR_B].utez = 1;
-        module->channel[timer_i].generator[MCPWM_OPR_B].uteb = 2;
-        module->channel[timer_i].generator[MCPWM_OPR_B].dteb = 1;
+        //module->operators[timer_i].generator[MCPWM_OPR_B].utez = 1;
+        module->operators[timer_i].generator[MCPWM_OPR_B].uteb = 2;
+        module->operators[timer_i].generator[MCPWM_OPR_B].dteb = 1;
     }
     // Update/swap shadow registers at timer equals zero for timer0,
     // update at sync for timer1.
@@ -951,10 +959,10 @@ static void pspwm_up_down_ctr_mode_register_base_setup(mcpwm_unit_t mcpwm_num) {
     module->timer[MCPWM_TIMER_0].period.upmethod = 1; // TEZ
     module->timer[MCPWM_TIMER_1].period.upmethod = 2; // Literal 2 correct: At sync
     // Datasheet 16.16: PWM_GEN0_STMP_CFG_REG (0x003c) etc.
-    module->channel[MCPWM_TIMER_0].cmpr_cfg.a_upmethod = 1; // TEZ
-    module->channel[MCPWM_TIMER_0].cmpr_cfg.b_upmethod = 1; // TEZ
-    module->channel[MCPWM_TIMER_1].cmpr_cfg.a_upmethod = 1ul<<2; // At sync
-    module->channel[MCPWM_TIMER_1].cmpr_cfg.b_upmethod = 1ul<<2; // At sync
+    module->operators[MCPWM_TIMER_0].cmpr_cfg.a_upmethod = 1; // TEZ
+    module->operators[MCPWM_TIMER_0].cmpr_cfg.b_upmethod = 1; // TEZ
+    module->operators[MCPWM_TIMER_1].cmpr_cfg.a_upmethod = 1ul<<2; // At sync
+    module->operators[MCPWM_TIMER_1].cmpr_cfg.b_upmethod = 1ul<<2; // At sync
     // Datasheet 16.15: PWM_OPERATOR_TIMERSEL_REG (0x0038)
     module->timer_sel.operator0_sel = 0;
     module->timer_sel.operator1_sel = 1;

@@ -10,8 +10,9 @@ Application in power electronics, e.g.
 
 This depends on the ESP-IDF SDK source files.
 
- * Tested up to ESP-IDF version 4.3-beta3
- * Currently not working with IDF v4.4 master branch, which is under work
+ * Currently will be working with IDF v4.4 master branch. You can change the tags with git checkout.
+ * Tested up to ESP-IDF version 4.3-beta3 on v1.0.0 tag
+ * Tested up to ESP-IDF version 4.4.7 on v1.1.0 tag
  * Not compatible with ESP32-S2 as that chip has no MCPWM hardware module
 
  ## See example in examples subfolder
