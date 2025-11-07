@@ -1,0 +1,33 @@
+{
+  "name": "ESP-IDF Codespaces",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      // ✅ 원하는 ESP-IDF 버전을 선택하세요. (예: "v5.2.1", "v5.1.2", "latest")
+      "DOCKER_TAG": "v5.2.1"
+    }
+  },
+
+  // Codespace에 자동으로 설치할 VSCode 확장 프로그램
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        // ✅ 설치된 ESP-IDF 경로 지정
+        "idf.espIdfPath": "/opt/esp/idf",
+        "idf.customExtraPaths": "",
+        "idf.toolsPath": "/opt/esp",
+        "idf.gitPath": "/usr/bin/git",
+        "idf.showOnboardingOnInit": false,
+        "extensions.ignoreRecommendations": true
+      },
+      "extensions": [
+        "espressif.esp-idf-extension", // ESP-IDF 공식 확장
+        "espressif.esp-idf-web"        // ESP-IDF 웹 확장 (플래시/모니터용)
+      ]
+    }
+  },
+
+  // USB 장치 접근(플래시/모니터)을 위해 '--privileged' 옵션 추가
+  "runArgs": ["--privileged"]
+}
