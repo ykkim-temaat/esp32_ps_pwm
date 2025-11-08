@@ -32,8 +32,8 @@
 void initialize_phase_shift_pwm()
 {
     ///////////////////////////// Configuration ////////////////////////////////
-    // MCPWM unit can be [0,1]
-    mcpwm_unit_t mcpwm_num = MCPWM_UNIT_0;
+    // MCPWM unit/group ID [0, 1]
+    int group_id = 0; // <-- mcpwm_unit_t (v4) -> int (v5)
 
 #ifdef CONFIG_IDF_TARGET_ESP32
     // GPIO config for PWM output
@@ -54,13 +54,12 @@ void initialize_phase_shift_pwm()
 #endif
 
     // Active low / active high selection for fault input pin
-    mcpwm_fault_input_level_t fault_pin_active_level = MCPWM_LOW_LEVEL_TGR;
+    // v4: MCPWM_LOW_LEVEL_TGR -> v5: 0 (v5.x API는 0=low, 1=high를 사용합니다)
+    int fault_pin_active_level = 0; // <-- 0 for Active Low
+    
     // Define here if the output pins shall be forced low or high
-    // or high-impedance when a fault condition is triggered.
-    // PWMxA and PWMxB have the same type of action, see declaration in mcpwm.h
-    mcpwm_action_on_pwmxa_t disable_action_lag_leg = MCPWM_FORCE_MCPWMXA_LOW;
-    // Lead leg might have a different configuration, e.g. stay at last output level
-    mcpwm_action_on_pwmxa_t disable_action_lead_leg = MCPWM_FORCE_MCPWMXA_LOW;
+    mcpwm_generator_action_t disable_action_lag_leg = MCPWM_GEN_ACTION_LOW;
+    mcpwm_generator_action_t disable_action_lead_leg = MCPWM_GEN_ACTION_LOW;
 
     float init_frequency = 100e3f;
     // Initial phase-shift setpoint
@@ -74,7 +73,7 @@ void initialize_phase_shift_pwm()
     ////////////////////////////////////////////////////////////////////////////
 
     printf("Configuring Phase-Shift-PWM...\n");
-    esp_err_t errors = pspwm_init_symmetrical(mcpwm_num,
+    esp_err_t errors = pspwm_init_symmetrical(group_id,
                                               gpio_pwm0a_out,
                                               gpio_pwm0b_out,
                                               gpio_pwm1a_out,
@@ -88,10 +87,10 @@ void initialize_phase_shift_pwm()
                                               disable_action_lag_leg);
     // Enable fault shutdown input, low level disables output.
     // Must then be reset manually by removing fault condition and then calling:
-    // "pspwm_clear_hw_fault_shutdown_occurred(mcpwm_unit_t mcpwm_num);"
+    // "pspwm_clear_hw_fault_shutdown_occurred(mcpwm_unit_t group_id);"
     // followed by:
-    // "pspwm_resync_enable_output(mcpwm_unit_t mcpwm_num);"
-    errors |= pspwm_enable_hw_fault_shutdown(mcpwm_num,
+    // "pspwm_resync_enable_output(mcpwm_unit_t group_id);"
+    errors |= pspwm_enable_hw_fault_shutdown(group_id,
                                              gpio_fault_shutdown,
                                              fault_pin_active_level);
     // Pull-up enabled for avoiding shutdown on start
@@ -124,8 +123,8 @@ void mcpwm_example_ps_pwm(void *arg)
 
     while (1) {
 
-        pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
-        pspwm_resync_enable_output(MCPWM_UNIT_0);
+        pspwm_clear_hw_fault_shutdown_occurred(0);
+        pspwm_resync_enable_output(0);
 
         // Switch frequency from time to time just for demonstration
         // vTaskDelay(3*configTICK_RATE_HZ);
@@ -137,7 +136,7 @@ void mcpwm_example_ps_pwm(void *arg)
         // pStrip_a->refresh(pStrip_a, 100);
 #endif
         printf("pspwm_set_frequency 100kHz... \n");
-        pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
+        pspwm_set_frequency(0, 100e3); // 100 kHz
 
         // vTaskDelay(3*configTICK_RATE_HZ);        
         vTaskDelay(3000 / portTICK_PERIOD_MS);
@@ -147,7 +146,7 @@ void mcpwm_example_ps_pwm(void *arg)
             // pStrip_a->clear(pStrip_a, 50);
 #endif
         printf("pspwm_set_frequency 200kHz... \n");
-        pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz
+        pspwm_set_frequency(0, 200e3); // 200 kHz
     }
 }
 
