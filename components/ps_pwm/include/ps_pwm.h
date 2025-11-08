@@ -15,8 +15,8 @@
 #define PS_PWM_H__
 
 #include <stdbool.h> 
-#include "driver/mcpwm.h"
-#include "driver/periph_ctrl.h" // for esp-idf v4.4.7
+// #include "driver/mcpwm.h"
+#include "driver/mcpwm_prelude.h"
 
 // Set log level to ESP_LOG_INFO for production!
 #define PS_PWM_LOG_LEVEL ESP_LOG_INFO

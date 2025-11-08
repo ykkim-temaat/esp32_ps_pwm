@@ -22,9 +22,9 @@
 #include "freertos/task.h"
 #include "esp_attr.h"
 
-#include "driver/mcpwm.h"
+#include "driver/mcpwm_prelude.h"
 #include "driver/gpio.h"
-#include "led_strip.h"
+// #include "led_strip.h"
 #include "soc/mcpwm_periph.h"
 
 #include "ps_pwm.h"
@@ -117,9 +117,9 @@ void mcpwm_example_ps_pwm(void *arg)
     gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 #elif CONFIG_IDF_TARGET_ESP32S3
     #define LED_PIN GPIO_NUM_48
-    led_strip_t *pStrip_a;
-    pStrip_a = led_strip_init(0, LED_PIN, 1);
-    pStrip_a->clear(pStrip_a, 50);
+    // led_strip_t *pStrip_a;
+    // pStrip_a = led_strip_init(0, LED_PIN, 1);
+    // pStrip_a->clear(pStrip_a, 50);
 #endif
 
     while (1) {
@@ -133,8 +133,8 @@ void mcpwm_example_ps_pwm(void *arg)
 #ifdef CONFIG_IDF_TARGET_ESP32
         gpio_set_level(LED_PIN, 1);
 #elif CONFIG_IDF_TARGET_ESP32S3         
-        pStrip_a->set_pixel(pStrip_a, 0, 16, 16, 16);            
-        pStrip_a->refresh(pStrip_a, 100);
+        // pStrip_a->set_pixel(pStrip_a, 0, 16, 16, 16);            
+        // pStrip_a->refresh(pStrip_a, 100);
 #endif
         printf("pspwm_set_frequency 100kHz... \n");
         pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
@@ -144,7 +144,7 @@ void mcpwm_example_ps_pwm(void *arg)
 #ifdef CONFIG_IDF_TARGET_ESP32
         gpio_set_level(LED_PIN, 0);
 #elif CONFIG_IDF_TARGET_ESP32S3
-            pStrip_a->clear(pStrip_a, 50);
+            // pStrip_a->clear(pStrip_a, 50);
 #endif
         printf("pspwm_set_frequency 200kHz... \n");
         pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz

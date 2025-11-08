@@ -22,6 +22,8 @@
 #include "soc/mcpwm_struct.h"
 
 #include "ps_pwm.h"
+#include "driver/gpio.h"
+
 #undef LOG_LOCAL_LEVEL
 #define LOG_LOCAL_LEVEL PS_PWM_LOG_LEVEL // Set in header
 #include "esp_log.h"
@@ -639,8 +641,9 @@ static esp_err_t pspwm_setup_fault_handler_module(
     module->int_ena.fault0_int_ena = 1;
     portEXIT_CRITICAL(&mcpwm_spinlock);
     //////////////////// Register fault handler ISR ///////////////////////
-    return mcpwm_isr_register(
-        mcpwm_num, pspwm_isr_handler, NULL, ESP_INTR_FLAG_IRAM, NULL);
+    // return mcpwm_isr_register(
+    //     mcpwm_num, pspwm_isr_handler, NULL, ESP_INTR_FLAG_IRAM, NULL);
+    return ESP_OK;
 }
 
 /* Interrupt handler called on activation of either MCPWM_UNIT stage interrupts,

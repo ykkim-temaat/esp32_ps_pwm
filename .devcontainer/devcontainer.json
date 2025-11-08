@@ -4,7 +4,7 @@
     "dockerfile": "Dockerfile",
     "args": {
       // ✅ 원하는 ESP-IDF 버전을 선택하세요. (예: "v5.2.1", "v5.1.2", "latest")
-      "DOCKER_TAG": "v5.2.1"
+      "DOCKER_TAG": "v5.5.1"
     }
   },
 
