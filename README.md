@@ -5,7 +5,8 @@ This depends on the ESP-IDF SDK source files.
 
  * Currently will be working with IDF v4.4 master branch. You can change the tags with git checkout.
  * Tested up to ESP-IDF version 4.3-beta3 on v1.0.0 tag
- * Tested up to ESP-IDF version 4.4.7 on v1.1.x tag
+ * Tested up to ESP-IDF version v4.4.7 on v1.1.1 tag
+ * Now Developing on ESP-IDF version v5.3.4 on esp-idf-v5.3 branch
 
 # MCPWM Phase-Shift PWM example
 
