@@ -22,13 +22,7 @@
 #include "freertos/task.h"
 #include "esp_attr.h"
 
-#include "driver/mcpwm.h"
 #include "driver/gpio.h"
-#include "led_strip.h"
-#include "soc/mcpwm_periph.h"
-
-#include "led_strip.h"
-
 #include "ps_pwm.h"
 
 void initialize_phase_shift_pwm()
@@ -115,23 +109,11 @@ void mcpwm_example_ps_pwm(void *arg)
 
 #ifdef CONFIG_IDF_TARGET_ESP32
     #define LED_PIN GPIO_NUM_2
-    gpio_pad_select_gpio(LED_PIN);
-    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 #elif CONFIG_IDF_TARGET_ESP32S3
-    #define LED_PIN GPIO_NUM_48    
-    // 전역 변수 핸들 선언
-    led_strip_handle_t led_strip;
-    // 초기화 부분
-    led_strip_config_t strip_config = {
-        .strip_gpio_num = LED_PIN,
-        .max_leds = 1, // LED 개수
-    };
-    led_strip_rmt_config_t rmt_config = {
-        .resolution_hz = 10 * 1000 * 1000, // 10MHz
-    };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
-    led_strip_clear(led_strip);
+    #define LED_PIN GPIO_NUM_48
 #endif
+    gpio_reset_pin(LED_PIN);
+    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 
     while (1) {
 
@@ -141,22 +123,14 @@ void mcpwm_example_ps_pwm(void *arg)
         // Switch frequency from time to time just for demonstration
         // vTaskDelay(3*configTICK_RATE_HZ);
         vTaskDelay(3000 / portTICK_PERIOD_MS);
-#ifdef CONFIG_IDF_TARGET_ESP32
         gpio_set_level(LED_PIN, 1);
-#elif CONFIG_IDF_TARGET_ESP32S3         
-        led_strip_set_pixel(led_strip, 0, 16, 16, 16);
-        led_strip_refresh(led_strip);
-#endif
+
         printf("pspwm_set_frequency 100kHz... \n");
         pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
 
         // vTaskDelay(3*configTICK_RATE_HZ);        
         vTaskDelay(3000 / portTICK_PERIOD_MS);
-#ifdef CONFIG_IDF_TARGET_ESP32
-        led_strip_clear(led_strip);
-#elif CONFIG_IDF_TARGET_ESP32S3
-            pStrip_a->clear(pStrip_a, 50);
-#endif
+        gpio_set_level(LED_PIN, 0);
         printf("pspwm_set_frequency 200kHz... \n");
         pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz
     }

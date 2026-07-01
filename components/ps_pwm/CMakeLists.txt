@@ -8,5 +8,5 @@ set(sources
 
 idf_component_register(SRCS "${sources}"
                        INCLUDE_DIRS "."
-                       #REQUIRES "${requires}"
+                       REQUIRES "driver"
 )
