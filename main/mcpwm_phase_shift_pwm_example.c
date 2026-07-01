@@ -23,6 +23,11 @@
 #include "esp_attr.h"
 
 #include "driver/gpio.h"
+
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+#include "led_strip.h"
+#endif
+
 #include "ps_pwm.h"
 
 void initialize_phase_shift_pwm()
@@ -109,30 +114,69 @@ void mcpwm_example_ps_pwm(void *arg)
 
 #ifdef CONFIG_IDF_TARGET_ESP32
     #define LED_PIN GPIO_NUM_2
-#elif CONFIG_IDF_TARGET_ESP32S3
-    #define LED_PIN GPIO_NUM_48
-#endif
     gpio_reset_pin(LED_PIN);
     gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+#elif CONFIG_IDF_TARGET_ESP32S3
+    #define LED_PIN GPIO_NUM_48
+    led_strip_handle_t led_strip;
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = LED_PIN,
+        .max_leds = 1,
+        .led_model = LED_MODEL_WS2812,
+        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
+    };
+    led_strip_rmt_config_t rmt_config = {
+        .resolution_hz = 10 * 1000 * 1000, // 10MHz
+    };
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
+    led_strip_clear(led_strip);
+#endif
 
     while (1) {
+        // 1. Check if a hardware fault occurred
+        if (pspwm_get_hw_fault_shutdown_occurred(MCPWM_UNIT_0)) {
+            printf("WARNING: Hardware Fault Detected! Outputs are latched LOW.\n");
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+            led_strip_set_pixel(led_strip, 0, 32, 0, 0); // Red
+            led_strip_refresh(led_strip);
+#endif
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
 
-        pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
-        pspwm_resync_enable_output(MCPWM_UNIT_0);
+            // Try to recover if the fault condition on the pin is cleared
+            if (!pspwm_get_hw_fault_shutdown_present(MCPWM_UNIT_0)) {
+                printf("INFO: Fault condition cleared on GPIO. Recovering outputs...\n");
+                pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
+                pspwm_resync_enable_output(MCPWM_UNIT_0);
+            }
+            continue;
+        }
 
-        // Switch frequency from time to time just for demonstration
-        // vTaskDelay(3*configTICK_RATE_HZ);
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        // 2. Output 100 kHz Mode
+        printf("STATUS: Phase-Shift PWM Active | Frequency: 100 kHz | Duty: 45.0%% | Status LED: GREEN\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
         gpio_set_level(LED_PIN, 1);
-
-        printf("pspwm_set_frequency 100kHz... \n");
+#elif CONFIG_IDF_TARGET_ESP32S3
+        led_strip_set_pixel(led_strip, 0, 0, 32, 0); // Green
+        led_strip_refresh(led_strip);
+#endif
         pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
-
-        // vTaskDelay(3*configTICK_RATE_HZ);        
         vTaskDelay(3000 / portTICK_PERIOD_MS);
+
+        // Check fault again before switching
+        if (pspwm_get_hw_fault_shutdown_occurred(MCPWM_UNIT_0)) {
+            continue;
+        }
+
+        // 3. Output 200 kHz Mode
+        printf("STATUS: Phase-Shift PWM Active | Frequency: 200 kHz | Duty: 45.0%% | Status LED: BLUE\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
         gpio_set_level(LED_PIN, 0);
-        printf("pspwm_set_frequency 200kHz... \n");
+#elif CONFIG_IDF_TARGET_ESP32S3
+        led_strip_set_pixel(led_strip, 0, 0, 0, 32); // Blue
+        led_strip_refresh(led_strip);
+#endif
         pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
     }
 }
 
