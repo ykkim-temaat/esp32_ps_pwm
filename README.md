@@ -1,79 +1,102 @@
 | Supported Targets | ESP32 | ESP32-S3 |
 | ----------------- | ----- | -------- |
 
-This depends on the ESP-IDF SDK source files.
+# MCPWM Phase-Shift PWM Example
 
- * Currently will be working with IDF v4.4 master branch. You can change the tags with git checkout.
- * Tested up to ESP-IDF version 4.3-beta3 on v1.0.0 tag
- * Tested up to ESP-IDF version v4.4.7 on v1.1.1 tag
- * Now Developing on ESP-IDF version v5.3.4 on esp-idf-v5.3 branch
+This repository contains a Phase-Shift PWM (PS-PWM) driver component and example application for the Espressif ESP32 and ESP32-S3 SoCs, migrated to support **ESP-IDF v5.3.4**.
 
-# MCPWM Phase-Shift PWM example
+It uses the modern object-oriented MCPWM driver APIs (`driver/mcpwm_prelude.h`) to generate complementary phase-shifted PWM signals across two half-bridge legs (LEAD leg and LAG leg). This is highly useful in power electronics applications such as:
+* Zero-Voltage-Switching (ZVS) Full-Bridge / Dual-Active-Bridge (DAB) converters
+* LLC resonant converters
 
-This example will show you how to use MCPWM module to generate a Phase-Shift PWM signal between
-two pairs of hardware pins, e.g. for controlling a phase-shifted full-bridge power converter.
- 
-This example sets frequency, duty cycle and dead-time values for leading and
-lagging half-bridge leg to fixed values.
+## Development Status
+* **ESP-IDF Compatibility**: Developed and verified on **ESP-IDF v5.3.4** (branch: `esp-idf-v5.3`).
+* **Legacy Support**: Previous tags (`v1.1.1` and earlier) support ESP-IDF v4.4.7 and legacy direct-register (`mcpwm_dev_t`) APIs.
 
-MCPWM unit can be [0,1]
- 
+---
 
-## Preparation
-* Copy this examples folder to an empty working directory
-* Copy (or clone) esp32_ps_pwm into the components/ subfolder
+## Preparation & Build
 
-* Checkout your esp-idf to v4.4.7 branch and submodule update
+1. Set up your ESP-IDF v5.3.4 environment (e.g., `source $HOME/esp/esp-idf/export.sh` or run your `get_idf` alias).
+2. Set the target chip (ESP32-S3 or ESP32):
+   ```bash
+   idf.py set-target esp32s3
+   ```
+3. Build the application:
+   ```bash
+   idf.py build
+   ```
+4. Flash to your board:
+   ```bash
+   idf.py flash
+   ```
+5. View status logs:
+   ```bash
+   idf.py monitor
+   ```
 
-  $ ```git checkout v4.4.7 && git submodule update --init --recursive```
-* Set target using for ESP32-S3
+---
 
-  $ ```idf.py set-target esp32s3```
+## Pin Assignment
 
-## Pin assignment for ESP32 
-* PWM outputs for ESP32  
-  GPIO_NUM_27 // PWM0A output for LEAD leg, Low Side  
-  GPIO_NUM_26 // PWM0B output for LEAD leg, High Side  
-  GPIO_NUM_25 // PWM1A output for LAG leg, Low Side  
-  GPIO_NUM_33 // PWM1B output for LAG leg, High Side  
-* Optional, shutdown/fault input for PWM outputs: disables output when pulled low  
-  GPIO_NUM_4 // hardware shutdown input signal for PWM output  
-  GPIO_NUM_2 // blink onBoard LED
+### For ESP32-S3 (Tested on ESP32-S3-DevKitC-1)
+* **PWM Outputs**:
+  * `GPIO 5` ➡️ LEAD Leg Low-Side (PWM0A)
+  * `GPIO 4` ➡️ LEAD Leg High-Side (PWM0B)
+  * `GPIO 7` ➡️ LAG Leg Low-Side (PWM1A)
+  * `GPIO 6` ➡️ LAG Leg High-Side (PWM1B)
+* **Hardware Fault/Shutdown Input**:
+  * `GPIO 8` ➡️ Disables all outputs immediately on low-level trigger (OST brake).
+* **Onboard LED**:
+  * `GPIO 48` ➡️ WS2812 smart RGB LED for status monitoring.
 
-## Pin assignment for ESP32-S3
-* PWM outputs for ESP32-S3   
-  GPIO_NUM_5 // PWM0A output for LEAD leg, Low Side  
-  GPIO_NUM_4 // PWM0B output for LEAD leg, High Side  
-  GPIO_NUM_7 // PWM1A output for LAG leg, Low Side  
-  GPIO_NUM_6 // PWM1B output for LAG leg, High Side  
-* Optional, shutdown/fault input for PWM outputs: disables output when pulled low  
-  GPIO_NUM_8  // hardware shutdown input signal for PWM output  
-  GPIO_NUM_48 // blink onBoard LED (led_strip-RGB)
+### For ESP32
+* **PWM Outputs**:
+  * `GPIO 27` ➡️ LEAD Leg Low-Side (PWM0A)
+  * `GPIO 26` ➡️ LEAD Leg High-Side (PWM0B)
+  * `GPIO 25` ➡️ LAG Leg Low-Side (PWM1A)
+  * `GPIO 33` ➡️ LAG Leg High-Side (PWM1B)
+* **Hardware Fault/Shutdown Input**:
+  * `GPIO 4` ➡️ Disables all outputs immediately on low-level trigger.
+* **Onboard LED**:
+  * `GPIO 2` ➡️ Standard monochrome status LED.
 
-## Operation
-* On the four output pins, you will see two complementary, phase-shifted PWM waveforms
-* When PWM outputs are connected to a full-bridge circuit using an appropriate driver,  
-  using a differential voltage probe, you will see a phase-shifted PWM waveform.
-* GPIO numbers in () correspond to ESP32-S3
+---
+
+## Real-Time Monitoring & Status LED
+
+Since outputting high frequency PWM signals (100 kHz ~ 200 kHz) is hard to observe without an oscilloscope, this project includes an active serial monitor and LED color-coding status scheme:
+
+* 🟢 **Green LED (WS2812)** / **LED ON (ESP32)**:
+  * Indicates that PS-PWM is active and running in **100 kHz Mode** (Duty: 45%).
+* 🔵 **Blue LED (WS2812)** / **LED OFF (ESP32)**:
+  * Indicates that PS-PWM is active and running in **200 kHz Mode** (Duty: 45%).
+* 🔴 **Red LED (WS2812)**:
+  * Indicates that a **Hardware Fault/Shutdown** occurred (GPIO 8/4 triggered low). Outputs are safely latched Low.
+  * Once the fault condition on the pin is released, the driver automatically recovers and resumes normal operation.
+
+---
+
+## Schematic Representation
 
 ```
                             VDD
-                     .---------------.
-                     |               |
-                  ||-+               +-||
-  To  GPIO 26 (4) ||<-               ->|| To  GPIO 33 (6)
-      ------------||-+               +-||-----------
-                     |               |
-                     |     LOAD      |
-                     |      ___      |
-  LEAD half-bridge   o-----|___|-----o   LAG half-bridge
-                     |               |
-                     |               |
-                     |               |
-                  ||-+               +-||
-  To  GPIO 27 (5) ||<-               ->|| To  GPIO 25 (7)
-      ------------||-+               +-||-----------
-                     |               |
-                     '---------------'
-                            GND
+                      .---------------.
+                      |               |
+                   ||-+               +-||
+   To  GPIO 26 (4) ||<-               ->|| To  GPIO 33 (6)
+       ------------||-+               +-||-----------
+                      |               |
+                      |     LOAD      |
+                      |      ___      |
+   LEAD half-bridge   o-----|___|-----o   LAG half-bridge
+                      |               |
+                      |               |
+                      |               |
+                   ||-+               +-||
+   To  GPIO 27 (5) ||<-               ->|| To  GPIO 25 (7)
+       ------------||-+               +-||-----------
+                      |               |
+                      '---------------'
+                             GND
 ```
