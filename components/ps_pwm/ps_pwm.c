@@ -15,9 +15,11 @@ typedef struct {
     mcpwm_cmpr_handle_t comparators[2];   // [0]: lead, [1]: lag
     mcpwm_sync_handle_t sync_src;         // Timer 0 sync output
     mcpwm_fault_handle_t fault_detect;    // GPIO Fault detector
+    mcpwm_fault_handle_t soft_fault[2];   // Software Fault for disable_output (one per operator)
     int gpio_fault_shutdown;
     mcpwm_fault_input_level_t fault_pin_active_level;
     bool is_initialized;
+    bool is_software_disabled;
 } pspwm_state_t;
 
 // Setpoint values globally shared for frequency, phase and dead-time
@@ -44,11 +46,14 @@ static pspwm_clk_conf_t s_clk_conf = {
 // Interrupt callback triggered when One-Shot (OST) brake event occurs
 static bool IRAM_ATTR pspwm_brake_ost_callback(mcpwm_oper_handle_t oper, const mcpwm_brake_event_data_t *edata, void *user_data) {
     int mcpwm_num = (int)(intptr_t)user_data;
-    ost_fault_event_occurred[mcpwm_num] = true;
+    if (!s_states[mcpwm_num].is_software_disabled) {
+        ost_fault_event_occurred[mcpwm_num] = true;
+    }
     return false; // return false to not request task yield
 }
 
 /***************************** START API SECTION ******************************/
+
 
 esp_err_t pspwm_init(mcpwm_unit_t mcpwm_num,
                      int gpio_lead_a,
@@ -246,7 +251,33 @@ esp_err_t pspwm_init(mcpwm_unit_t mcpwm_num,
     err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[1][0], s_states[mcpwm_num].generators[1][0], &dt_a);
     err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[1][0], s_states[mcpwm_num].generators[1][1], &dt_b);
 
-    // Disable output initially by software force to be safe
+    // 8. Create a Soft Fault for securely disabling the PWM output (bypasses Dead-Time inversion)
+    mcpwm_soft_fault_config_t soft_fault_config = {};
+    err |= mcpwm_new_soft_fault(&soft_fault_config, &s_states[mcpwm_num].soft_fault[0]);
+    err |= mcpwm_new_soft_fault(&soft_fault_config, &s_states[mcpwm_num].soft_fault[1]);
+    mcpwm_brake_config_t soft_brake_config_0 = {
+        .fault = s_states[mcpwm_num].soft_fault[0],
+        .brake_mode = MCPWM_OPER_BRAKE_MODE_OST,
+    };
+    mcpwm_brake_config_t soft_brake_config_1 = {
+        .fault = s_states[mcpwm_num].soft_fault[1],
+        .brake_mode = MCPWM_OPER_BRAKE_MODE_OST,
+    };
+    err |= mcpwm_operator_set_brake_on_fault(s_states[mcpwm_num].operators[0], &soft_brake_config_0);
+    err |= mcpwm_operator_set_brake_on_fault(s_states[mcpwm_num].operators[1], &soft_brake_config_1);
+
+    // Set action for OST brake (which applies to both Soft Fault and future HW Fault)
+    mcpwm_gen_brake_event_action_t brake_action = {
+        .direction = MCPWM_TIMER_DIRECTION_UP,
+        .brake_mode = MCPWM_OPER_BRAKE_MODE_OST,
+        .action = MCPWM_GEN_ACTION_LOW,
+    };
+    err |= mcpwm_generator_set_action_on_brake_event(s_states[mcpwm_num].generators[0][0], brake_action);
+    err |= mcpwm_generator_set_action_on_brake_event(s_states[mcpwm_num].generators[0][1], brake_action);
+    err |= mcpwm_generator_set_action_on_brake_event(s_states[mcpwm_num].generators[1][0], brake_action);
+    err |= mcpwm_generator_set_action_on_brake_event(s_states[mcpwm_num].generators[1][1], brake_action);
+
+    // Disable output initially by triggering the soft fault to be safe
     err |= pspwm_disable_output(mcpwm_num);
 
     // Enable and Start Timers
@@ -454,21 +485,23 @@ bool pspwm_get_hw_fault_shutdown_occurred(mcpwm_unit_t mcpwm_num) {
 
 void pspwm_clear_hw_fault_shutdown_occurred(mcpwm_unit_t mcpwm_num) {
     ost_fault_event_occurred[mcpwm_num] = false;
-    // Unlatch the OST brake state on the operators
-    if (s_states[mcpwm_num].is_initialized && s_states[mcpwm_num].fault_detect) {
-        mcpwm_operator_recover_from_fault(s_states[mcpwm_num].operators[0], s_states[mcpwm_num].fault_detect);
-        mcpwm_operator_recover_from_fault(s_states[mcpwm_num].operators[1], s_states[mcpwm_num].fault_detect);
-    }
+    // Note: We DO NOT physically unlatch the OST brake here!
+    // Unlatching the brake here would cause a glitch or continuous output
+    // because the PWM would instantly resume.
+    // The brake will be properly unlatched inside pspwm_resync_enable_output()
+    // when the user actually requests the output to turn on.
 }
 
 esp_err_t pspwm_disable_output(mcpwm_unit_t mcpwm_num)
 {
     ESP_LOGD(TAG, "Disabling output!");
     esp_err_t err = ESP_OK;
-    for (int op = 0; op < 2; op++) {
-        for (int gen = 0; gen < 2; gen++) {
-            err |= mcpwm_generator_set_force_level(s_states[mcpwm_num].generators[op][gen], 0, true);
-        }
+    s_states[mcpwm_num].is_software_disabled = true;
+    if (s_states[mcpwm_num].soft_fault[0]) {
+        err |= mcpwm_soft_fault_activate(s_states[mcpwm_num].soft_fault[0]);
+    }
+    if (s_states[mcpwm_num].soft_fault[1]) {
+        err |= mcpwm_soft_fault_activate(s_states[mcpwm_num].soft_fault[1]);
     }
     pspwm_setpoint_t* setpoints = s_setpoints[mcpwm_num];
     assert(setpoints != NULL);
@@ -485,10 +518,18 @@ esp_err_t pspwm_resync_enable_output(mcpwm_unit_t mcpwm_num)
     }
 
     esp_err_t err = ESP_OK;
-    for (int op = 0; op < 2; op++) {
-        for (int gen = 0; gen < 2; gen++) {
-            err |= mcpwm_generator_set_force_level(s_states[mcpwm_num].generators[op][gen], -1, false);
-        }
+    s_states[mcpwm_num].is_software_disabled = false;
+    
+    // Clear both the hardware fault latch and soft fault latches
+    if (s_states[mcpwm_num].fault_detect) {
+        err |= mcpwm_operator_recover_from_fault(s_states[mcpwm_num].operators[0], s_states[mcpwm_num].fault_detect);
+        err |= mcpwm_operator_recover_from_fault(s_states[mcpwm_num].operators[1], s_states[mcpwm_num].fault_detect);
+    }
+    if (s_states[mcpwm_num].soft_fault[0]) {
+        err |= mcpwm_operator_recover_from_fault(s_states[mcpwm_num].operators[0], s_states[mcpwm_num].soft_fault[0]);
+    }
+    if (s_states[mcpwm_num].soft_fault[1]) {
+        err |= mcpwm_operator_recover_from_fault(s_states[mcpwm_num].operators[1], s_states[mcpwm_num].soft_fault[1]);
     }
 
     pspwm_setpoint_t* setpoints = s_setpoints[mcpwm_num];

@@ -6,7 +6,7 @@
  * Application in power electronics, e.g. Zero-Voltage-Switching (ZVS)
  * Full-Bridge-, Dual-Active-Bridge- and LLC converters.
  * 
- * @note This depends on the ESP-IDF SDK source files.
+ * @note Migrated to ESP-IDF v5.3.4 (using mcpwm_prelude.h)
  */
 #ifndef PS_PWM_H__
 #define PS_PWM_H__

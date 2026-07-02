@@ -1,4 +1,4 @@
-/** @brief ESP32 Phae-Shift-PWM Example
+/** @brief ESP32 Phase-Shift-PWM Example (Migrated to ESP-IDF v5.3.4)
  * 
  * Uses the driver for the MCPWM hardware modules on the Espressif ESP32
  * or ESP32-S3 SoC for generating a Phase-Shift-PWM waveform between
@@ -7,15 +7,17 @@
  * Application in power electronics, e.g. Zero-Voltage-Switching (ZVS)
  * Full-Bridge-, Dual-Active-Bridge- and LLC converters.
  *
- * 2021-05-21 Ulrich Lukas
+ * 2021-05-21 Ulrich Lukas (Original v4.x author)
+ * 
+ * @note Modified to support ESP32-S3, tested with ESP32-S3-DevKitC-1
+ * @note Migrated from ESP-IDF SDK v4.4.7 to v5.3.4
+ * @note Added robust Hardware Fault (OST) latching and manual recovery via GPIO 0
+ * @note Added interactive GPIO 0 button for safe PWM Enable/Disable using Soft Faults
+ * @note Added WS2812 LED status indicator (Idle/Running/Fault)
+ *
+ * 2024-05-24 Yoonki Kim (Initial v4.x mod)
+ * 2026-07-02 Yoonki Kim (v5.3.4 Migration & Safety features)
  */
-
- /* Modified to support ESP32S3, tested with ESP32-S3-DevKitC-1
-  *
-  * @note This depends on the ESP-IDF SDK v4.4.7 version.
-  *
-  * 2024-05-24 Yoonki Kim
-  */
 #include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
@@ -87,16 +89,21 @@ void initialize_phase_shift_pwm()
                                               init_power_pwm_active,
                                               disable_action_lead_leg,
                                               disable_action_lag_leg);
+    // Pull-up enabled for avoiding shutdown on start
+    gpio_pullup_en(gpio_fault_shutdown);
+    // Give the pull-up some time to pull the pin high
+    vTaskDelay(pdMS_TO_TICKS(10));
+
     // Enable fault shutdown input, low level disables output.
-    // Must then be reset manually by removing fault condition and then calling:
-    // "pspwm_clear_hw_fault_shutdown_occurred(mcpwm_unit_t mcpwm_num);"
-    // followed by:
-    // "pspwm_resync_enable_output(mcpwm_unit_t mcpwm_num);"
     errors |= pspwm_enable_hw_fault_shutdown(mcpwm_num,
                                              gpio_fault_shutdown,
                                              fault_pin_active_level);
-    // Pull-up enabled for avoiding shutdown on start
-    errors |= gpio_pullup_en(gpio_fault_shutdown);
+
+    // Clear any fault that might have been triggered during initialization
+    pspwm_clear_hw_fault_shutdown_occurred(mcpwm_num);
+    
+    // Explicitly enable output
+    pspwm_resync_enable_output(mcpwm_num);
 
     if (errors != ESP_OK) {
         printf("Error initializing the PS-PWM module!\n");
@@ -132,51 +139,123 @@ void mcpwm_example_ps_pwm(void *arg)
     led_strip_clear(led_strip);
 #endif
 
+    #define BUTTON_PIN GPIO_NUM_0
+    gpio_config_t btn_conf = {
+        .pin_bit_mask = (1ULL << BUTTON_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&btn_conf);
+
+    bool is_output_enabled = true;
+    int last_btn_state = 1;
+    uint32_t loop_counter = 0;
+    bool freq_100k = true;
+
     while (1) {
         // 1. Check if a hardware fault occurred
         if (pspwm_get_hw_fault_shutdown_occurred(MCPWM_UNIT_0)) {
-            printf("WARNING: Hardware Fault Detected! Outputs are latched LOW.\n");
+            printf("\n=======================================================\n");
+            printf("CRITICAL ERROR: Hardware Fault Detected on GPIO 8!\n");
+            printf("Outputs are securely latched LOW.\n");
+            printf("Please inspect hardware and press BOOT button (GPIO 0) to clear the fault.\n");
+            printf("=======================================================\n\n");
+            
+            // Latch until button is pressed AND fault condition is physically cleared
+            bool fault_cleared = false;
+            uint32_t fault_loop_cnt = 0;
+            while (!fault_cleared) {
+                // Blink Red LED for warning
+                if (fault_loop_cnt % 50 == 0) {
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-            led_strip_set_pixel(led_strip, 0, 32, 0, 0); // Red
-            led_strip_refresh(led_strip);
+                    if ((fault_loop_cnt / 50) % 2 == 0) {
+                        led_strip_set_pixel(led_strip, 0, 32, 0, 0); // Red
+                    } else {
+                        led_strip_set_pixel(led_strip, 0, 0, 0, 0); // Off
+                    }
+                    led_strip_refresh(led_strip);
 #endif
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
+                }
+                
+                int btn_state = gpio_get_level(BUTTON_PIN);
+                if (btn_state == 0 && last_btn_state == 1) { // Button pressed
+                    if (pspwm_get_hw_fault_shutdown_present(MCPWM_UNIT_0)) {
+                        printf("Cannot clear fault: Hardware fault condition (GPIO 8 LOW) is still physically present!\n");
+                    } else {
+                        printf("Fault cleared by user. Returning to Disabled state.\n");
+                        // 1. Activate the soft fault FIRST to ensure the outputs remain securely OFF
+                        pspwm_disable_output(MCPWM_UNIT_0);
+                        // 2. Then clear the hardware fault latch. The outputs will stay OFF because soft fault is active.
+                        pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
+                        is_output_enabled = false;
+                        fault_cleared = true;
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(50)); // Debounce
+                }
+                last_btn_state = btn_state;
 
-            // Try to recover if the fault condition on the pin is cleared
-            if (!pspwm_get_hw_fault_shutdown_present(MCPWM_UNIT_0)) {
-                printf("INFO: Fault condition cleared on GPIO. Recovering outputs...\n");
-                pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
-                pspwm_resync_enable_output(MCPWM_UNIT_0);
+                fault_loop_cnt++;
+                vTaskDelay(pdMS_TO_TICKS(10));
             }
-            continue;
+            continue; // Go back to start of main loop
         }
 
-        // 2. Output 100 kHz Mode
-        printf("STATUS: Phase-Shift PWM Active | Frequency: 100 kHz | Duty: 45.0%% | Status LED: GREEN\n");
-#ifdef CONFIG_IDF_TARGET_ESP32
-        gpio_set_level(LED_PIN, 1);
-#elif CONFIG_IDF_TARGET_ESP32S3
-        led_strip_set_pixel(led_strip, 0, 0, 32, 0); // Green
-        led_strip_refresh(led_strip);
-#endif
-        pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
-
-        // Check fault again before switching
-        if (pspwm_get_hw_fault_shutdown_occurred(MCPWM_UNIT_0)) {
-            continue;
+        // 2. Poll button for toggle
+        int btn_state = gpio_get_level(BUTTON_PIN);
+        if (btn_state == 0 && last_btn_state == 1) { // Button pressed
+            if (is_output_enabled) {
+                printf("BUTTON PRESSED: Disabling PWM Output\n");
+                pspwm_disable_output(MCPWM_UNIT_0);
+                is_output_enabled = false;
+            } else {
+                printf("BUTTON PRESSED: Enabling PWM Output\n");
+                pspwm_resync_enable_output(MCPWM_UNIT_0);
+                is_output_enabled = true;
+            }
+            vTaskDelay(pdMS_TO_TICKS(50)); // Debounce
         }
+        last_btn_state = btn_state;
 
-        // 3. Output 200 kHz Mode
-        printf("STATUS: Phase-Shift PWM Active | Frequency: 200 kHz | Duty: 45.0%% | Status LED: BLUE\n");
+        // 3. Switch Frequency every ~3 seconds (300 * 10ms)
+        if (loop_counter % 300 == 0) {
+            if (is_output_enabled) {
+                if (freq_100k) {
+                    printf("STATUS: Phase-Shift PWM Active | Frequency: 100 kHz | Duty: 45.0%% | Status LED: GREEN\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
-        gpio_set_level(LED_PIN, 0);
+                    gpio_set_level(LED_PIN, 1);
 #elif CONFIG_IDF_TARGET_ESP32S3
-        led_strip_set_pixel(led_strip, 0, 0, 0, 32); // Blue
-        led_strip_refresh(led_strip);
+                    led_strip_set_pixel(led_strip, 0, 0, 32, 0); // Green
+                    led_strip_refresh(led_strip);
 #endif
-        pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
+                    pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
+                    freq_100k = false;
+                } else {
+                    printf("STATUS: Phase-Shift PWM Active | Frequency: 200 kHz | Duty: 45.0%% | Status LED: BLUE\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
+                    gpio_set_level(LED_PIN, 0);
+#elif CONFIG_IDF_TARGET_ESP32S3
+                    led_strip_set_pixel(led_strip, 0, 0, 0, 32); // Blue
+                    led_strip_refresh(led_strip);
+#endif
+                    pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz
+                    freq_100k = true;
+                }
+            } else {
+                // If output is disabled, ensure the LED is off and print idle status once every 3 sec
+                printf("STATUS: PWM Disabled | System Idle | Status LED: OFF\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
+                gpio_set_level(LED_PIN, 0);
+#elif CONFIG_IDF_TARGET_ESP32S3
+                led_strip_set_pixel(led_strip, 0, 0, 0, 0); // Off
+                led_strip_refresh(led_strip);
+#endif
+            }
+        }
+        
+        loop_counter++;
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 

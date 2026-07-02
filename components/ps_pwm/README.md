@@ -7,8 +7,8 @@ This is the `ps_pwm` component driver for generating a Phase-Shift-PWM (PS-PWM) 
 * **Driver Architecture**: Uses the object-oriented, handle-based MCPWM APIs (`driver/mcpwm_prelude.h`) instead of legacy raw register manipulation (`mcpwm_dev_t`).
 * **Synchronization**: Synchronizes Timer 0 (LEAD leg) and Timer 1 (LAG leg) at hardware level using a sync event source to achieve precise phase-shifted timing.
 * **Complementary Output & Dead-Time**: Generates complementary high/low-side drive signals for each leg, utilizing the generator-level dead-time configuration (RED/FED) to prevent shoot-through.
-* **Hardware Protection (Trip-Zone)**: Connects a GPIO fault detector to trigger a One-Shot (OST) brake on the operators, latching all PWM outputs Low within nanoseconds of a fault event. Contains auto-recovery routines.
-
+* **Hardware Protection (Trip-Zone)**: Connects a GPIO fault detector to trigger a One-Shot (OST) brake on the operators, latching all PWM outputs Low within nanoseconds of a fault event. Designed with safe manual unlatching and recovery.
+* **Software Output Control**: Implements dual Soft Faults to allow safe manual Enabling/Disabling of PWM outputs while perfectly maintaining dead-time and preventing inverted output glitches.
 ---
 
 ## Supported Targets

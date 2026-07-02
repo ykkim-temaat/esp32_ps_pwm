@@ -46,7 +46,9 @@ It uses the modern object-oriented MCPWM driver APIs (`driver/mcpwm_prelude.h`) 
   * `GPIO 7` ➡️ LAG Leg Low-Side (PWM1A)
   * `GPIO 6` ➡️ LAG Leg High-Side (PWM1B)
 * **Hardware Fault/Shutdown Input**:
-  * `GPIO 8` ➡️ Disables all outputs immediately on low-level trigger (OST brake).
+  * `GPIO 8` ➡️ Disables all outputs immediately on low-level trigger (Hardware OST brake).
+* **Manual Reset & Output Control**:
+  * `GPIO 0` (BOOT button) ➡️ Manually clears Hardware Faults and toggles PWM Output ON/OFF safely via Software Faults.
 * **Onboard LED**:
   * `GPIO 48` ➡️ WS2812 smart RGB LED for status monitoring.
 
@@ -71,10 +73,11 @@ Since outputting high frequency PWM signals (100 kHz ~ 200 kHz) is hard to obser
   * Indicates that PS-PWM is active and running in **100 kHz Mode** (Duty: 45%).
 * 🔵 **Blue LED (WS2812)** / **LED OFF (ESP32)**:
   * Indicates that PS-PWM is active and running in **200 kHz Mode** (Duty: 45%).
-* 🔴 **Red LED (WS2812)**:
-  * Indicates that a **Hardware Fault/Shutdown** occurred (GPIO 8/4 triggered low). Outputs are safely latched Low.
-  * Once the fault condition on the pin is released, the driver automatically recovers and resumes normal operation.
-
+* 🔴 **Red LED (WS2812)** (Blinking):
+  * Indicates that a **Hardware Fault/Shutdown** occurred (GPIO 8/4 triggered low). Outputs are safely latched Low (0V).
+  * Requires **MANUAL INTERVENTION**: The user must remove the physical fault condition and press the **BOOT button (GPIO 0)** to clear the fault latch.
+* ⚪ **LED OFF (WS2812)**:
+  * Indicates that the PWM output is currently **Disabled** (System Idle). Press the BOOT button to enable.
 ---
 
 ## Schematic Representation
