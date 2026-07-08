@@ -467,6 +467,81 @@ esp_err_t pspwm_set_ps_duty(mcpwm_unit_t mcpwm_num, float ps_duty)
     return ESP_OK;
 }
 
+typedef struct {
+    mcpwm_unit_t mcpwm_num;
+    float current_duty;
+    float target_duty;
+    uint32_t duration_ms;
+    TaskHandle_t task_handle;
+} pspwm_soft_start_ctx_t;
+
+static pspwm_soft_start_ctx_t s_soft_start_ctx[2] = {
+    {.task_handle = NULL},
+    {.task_handle = NULL}
+};
+
+static void pspwm_soft_start_task(void *arg) {
+    pspwm_soft_start_ctx_t *ctx = (pspwm_soft_start_ctx_t *)arg;
+    uint32_t step_delay_ms = 10; // 10 ms per step
+    uint32_t num_steps = ctx->duration_ms / step_delay_ms;
+    if (num_steps == 0) num_steps = 1;
+    
+    float duty_step = (ctx->target_duty - ctx->current_duty) / (float)num_steps;
+    
+    for (uint32_t i = 0; i < num_steps; i++) {
+        ctx->current_duty += duty_step;
+        if (duty_step > 0 && ctx->current_duty > ctx->target_duty) ctx->current_duty = ctx->target_duty;
+        if (duty_step < 0 && ctx->current_duty < ctx->target_duty) ctx->current_duty = ctx->target_duty;
+        
+        pspwm_set_ps_duty(ctx->mcpwm_num, ctx->current_duty);
+        vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
+    }
+    
+    // Ensure exact final target is set
+    pspwm_set_ps_duty(ctx->mcpwm_num, ctx->target_duty);
+    
+    ctx->task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
+esp_err_t pspwm_set_duty_soft(mcpwm_unit_t mcpwm_num, float target_duty, uint32_t duration_ms) {
+    ESP_LOGD(TAG, "Call pspwm_set_duty_soft");
+    if (target_duty < 0.0f || target_duty > 1.0f) {
+        ESP_LOGE(TAG, "Invalid setpoint value for target_duty");
+        return ESP_FAIL;
+    }
+
+    pspwm_setpoint_t* setpoints = s_setpoints[mcpwm_num];
+    if (setpoints == NULL) {
+        ESP_LOGE(TAG, "pspwm not initialized");
+        return ESP_FAIL;
+    }
+
+    if (duration_ms == 0) {
+        return pspwm_set_ps_duty(mcpwm_num, target_duty);
+    }
+
+    pspwm_soft_start_ctx_t *ctx = &s_soft_start_ctx[mcpwm_num];
+    
+    // If a soft start is already running for this unit, abort it
+    if (ctx->task_handle != NULL) {
+        vTaskDelete(ctx->task_handle);
+        ctx->task_handle = NULL;
+    }
+
+    ctx->mcpwm_num = mcpwm_num;
+    ctx->current_duty = setpoints->ps_duty;
+    ctx->target_duty = target_duty;
+    ctx->duration_ms = duration_ms;
+
+    if (xTaskCreate(pspwm_soft_start_task, "pspwm_soft_start", 2048, ctx, 5, &ctx->task_handle) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create soft start task");
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
 bool pspwm_get_hw_fault_shutdown_present(mcpwm_unit_t mcpwm_num) {
     if (!s_states[mcpwm_num].is_initialized || s_states[mcpwm_num].gpio_fault_shutdown < 0) {
         return false;

@@ -67,7 +67,7 @@ void initialize_phase_shift_pwm()
 
     float init_frequency = 100e3f;
     // Initial phase-shift setpoint
-    float init_ps_duty = 0.45f;
+    float init_ps_duty = 0.0f; // Started from 0.0 for soft start test
     // Initial leading leg dead-time value in ns
     float init_lead_dt = 125e-9f;
     // Initial lagging leg dead-time value in ns
@@ -208,10 +208,13 @@ void mcpwm_example_ps_pwm(void *arg)
             if (is_output_enabled) {
                 printf("BUTTON PRESSED: Disabling PWM Output\n");
                 pspwm_disable_output(MCPWM_UNIT_0);
+                pspwm_set_duty_soft(MCPWM_UNIT_0, 0.0f, 0); // Stop soft-start task & reset duty to 0%
                 is_output_enabled = false;
             } else {
                 printf("BUTTON PRESSED: Enabling PWM Output\n");
+                pspwm_set_ps_duty(MCPWM_UNIT_0, 0.0f);      // Ensure it starts exactly from 0%
                 pspwm_resync_enable_output(MCPWM_UNIT_0);
+                pspwm_set_duty_soft(MCPWM_UNIT_0, 1.0f, 10000); // Trigger 10s soft-start to 100%
                 is_output_enabled = true;
             }
             vTaskDelay(pdMS_TO_TICKS(50)); // Debounce
@@ -222,7 +225,7 @@ void mcpwm_example_ps_pwm(void *arg)
         if (loop_counter % 300 == 0) {
             if (is_output_enabled) {
                 if (freq_100k) {
-                    printf("STATUS: Phase-Shift PWM Active | Frequency: 100 kHz | Duty: 45.0%% | Status LED: GREEN\n");
+                    printf("STATUS: Phase-Shift PWM Active | Frequency: 100 kHz | Status LED: GREEN\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
                     gpio_set_level(LED_PIN, 1);
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -232,7 +235,7 @@ void mcpwm_example_ps_pwm(void *arg)
                     pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
                     freq_100k = false;
                 } else {
-                    printf("STATUS: Phase-Shift PWM Active | Frequency: 200 kHz | Duty: 45.0%% | Status LED: BLUE\n");
+                    printf("STATUS: Phase-Shift PWM Active | Frequency: 200 kHz | Status LED: BLUE\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
                     gpio_set_level(LED_PIN, 0);
 #elif CONFIG_IDF_TARGET_ESP32S3

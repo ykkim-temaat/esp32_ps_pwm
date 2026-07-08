@@ -205,6 +205,17 @@ esp_err_t pspwm_set_deadtimes_symmetrical(mcpwm_unit_t mcpwm_num,
 esp_err_t pspwm_set_ps_duty(mcpwm_unit_t mcpwm_num,
                             float ps_duty);
 
+/** @brief Smoothly transition the duty cycle to target over the specified duration.
+ * 
+ * @param mcpwm_num: PWM unit number
+ * @param target_duty: Final duty cycle (0..1)
+ * @param duration_ms: Time to reach the target duty in milliseconds
+ */
+esp_err_t pspwm_set_duty_soft(mcpwm_unit_t mcpwm_num,
+                              float target_duty,
+                              uint32_t duration_ms);
+
+
 
 /*****************************************************************
  *                         COMMON SETUP
