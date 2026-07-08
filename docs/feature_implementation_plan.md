@@ -28,7 +28,12 @@
    * PI 제어기나 미세 스텝 제어를 통해 `pspwm_set_frequency()`를 호출하여 공진점을 능동적으로 추적(Tracking).
 
 ## 4. 향후 작업 순서 (Action Items)
-1. **[진행 대기]** 본 문서의 컨셉 검토 및 확정.
-2. `ps_pwm` 컴포넌트 (혹은 `main` 어플리케이션) 내 FreeRTOS 기반 Soft Start 함수 및 태스크 구현.
-3. `mcpwm_prelude`의 Capture 기능 관련 초기화 로직 구현 및 GPIO 핀 할당.
-4. ZC 펄스 캡처 콜백 로직 및 위상차 계산 코드를 포함한 주파수 제어 루프 구현.
+1. **[완료]** 본 문서의 컨셉 검토 및 확정. (한국어 기본 응답 규칙 적용됨)
+2. **[완료]** `ps_pwm` 컴포넌트 내 FreeRTOS 기반 Soft Start 함수(`pspwm_set_duty_soft`) 및 태스크 구현 완료. (GPIO 0 버튼과 연동 테스트 성공)
+3. **[완료]** ZC 펄스 시뮬레이션 및 터미널 제어를 위한 HIL 테스트 아키텍처(`simulation_test.c`) 구축.
+   * `ps_pwm_main_task`: 터미널 제어 기반 주파수/듀티/Soft-start 적용 완료.
+   * `cap_monitor_task`: `mcpwm_prelude` Capture 초기화 (GPIO 4, 9) 및 위상차 모니터링 로직 구현.
+   * `terminal_cmd_task`: 터미널 커맨드를 통한 실시간 패러미터 제어 구현.
+4. **[완료]** 시뮬레이션 태스크 실행을 통한 Capture 측정값(위상차) 검증 및 PI 제어기를 통한 공진 주파수 자동 추적(Auto-Tracking) 루프 완성.
+   * 속도형 PI 제어 (Incremental PI) 및 데드밴드(Dead-band)를 이용한 완벽한 PLL Lock 구현 성공.
+5. **[진행 대기 - 다음 작업]** 실제 하드웨어 연결 및 HIL 기반 검증 로직을 실전 오존셀 구동 코드로 이식.

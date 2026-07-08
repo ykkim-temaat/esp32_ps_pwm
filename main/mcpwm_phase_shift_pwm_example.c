@@ -14,9 +14,11 @@
  * @note Added robust Hardware Fault (OST) latching and manual recovery via GPIO 0
  * @note Added interactive GPIO 0 button for safe PWM Enable/Disable using Soft Faults
  * @note Added WS2812 LED status indicator (Idle/Running/Fault)
+ * @note Added Resonant Frequency Auto-Tracking (PI Control with PLL Lock) via Capture Timer
  *
  * 2024-05-24 Yoonki Kim (Initial v4.x mod)
  * 2026-07-02 Yoonki Kim (v5.3.4 Migration & Safety features)
+ * 2026-07-08 Yoonki Kim (Auto-Tracking PI Control Loop)
  */
 #include <stdio.h>
 
@@ -262,8 +264,13 @@ void mcpwm_example_ps_pwm(void *arg)
     }
 }
 
+extern void start_simulation_tasks(void);
+
 void app_main(void)
 {
     printf("Observer output pins using oscilloscope.......\n");
-    xTaskCreate(mcpwm_example_ps_pwm, "mcpwm_example_ps_pwm", 4096, NULL, 5, NULL);
+    // xTaskCreate(mcpwm_example_ps_pwm, "mcpwm_example_ps_pwm", 4096, NULL, 5, NULL);
+    
+    // Start Interactive Simulation Mode
+    start_simulation_tasks();
 }
