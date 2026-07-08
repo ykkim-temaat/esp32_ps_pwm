@@ -77,3 +77,26 @@ pspwm_set_duty_soft(MCPWM_UNIT_0, 0.0f, 0);
 pspwm_disable_output(MCPWM_UNIT_0);
 pspwm_set_duty_soft(MCPWM_UNIT_0, 0.0f, 0); // 동작 중이던 Soft Start 취소
 ```
+
+---
+
+## 4. 공진 주파수 시뮬레이션 및 터미널 제어 테스트 (HIL)
+오존셀 구동 등 공진형 풀브릿지 인버터의 위상 지연(Phase Delay)을 시뮬레이션하고, 속도형 PI 제어(Incremental PI)와 데드밴드(Dead-band)를 통한 완벽한 주파수 트래킹(PLL Lock) 기능을 테스트할 수 있습니다.
+
+### 4.1. 터미널 명령어 목록
+* `on` : PWM 출력 시작 (지정된 Soft Start 시간에 맞춰 듀티 점진 상승)
+* `off` : PWM 출력 차단
+* `freq [값]` : 주파수 수동 설정 (예: `freq 20000`)
+* `duty [값]` : 목표 듀티 설정 (예: `duty 0.75`)
+* `soft [ms]` : Soft Start 상승 시간 설정 (예: `soft 2000`)
+* `delay [us]` : 공진 탱크의 전류 ZC 딜레이 시뮬레이션 값 수동 주입 (예: `delay 2`)
+* `track on` / `track off` : 자동 주파수 트래킹(PI 제어기) 활성화/비활성화
+* `zvs [us]` : 목표(Target) ZVS 딜레이 마진 설정 (예: `zvs 5.0`)
+* `kp [값]` / `ki [값]` : PI 제어기의 비례(Kp) 및 적분(Ki) 게인 실시간 설정 (빠른 추적을 위해 `ki 2000` 등 높은 값 권장)
+
+### 4.2. 트래킹 테스트(PLL Lock) 시나리오
+1. **하드웨어 연결:** `GPIO 4` (LEAD 출력)와 `GPIO 11` (LEAD 캡처)를 점퍼선으로 연결하고, `GPIO 10` (가상 ZC 펄스 출력)과 `GPIO 9` (ZC 캡처)를 연결합니다.
+2. 터미널에서 `on`을 입력하여 PWM을 20kHz로 활성화합니다.
+3. `track on`을 입력하여 트래킹 제어 루프를 시작합니다.
+4. `delay [값]` 명령어를 통해 딜레이를 주입하며 가상의 공진 탱크 물리적 변화를 시뮬레이션합니다.
+5. 터미널 로그(`[Auto-Track]`)를 통해 측정된 딜레이(Meas Delay)가 목표치(Target, 예: 5.0µs)와의 오차 범위(데드밴드 ±0.1µs) 내에 들어오는 순간 주파수 증감이 정지하며(Lock) 완벽하게 추적되는 것을 확인합니다.
