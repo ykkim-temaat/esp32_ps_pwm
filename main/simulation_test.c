@@ -220,13 +220,14 @@ void cap_monitor_task(void *arg) {
     };
     ESP_ERROR_CHECK(mcpwm_new_capture_timer(&cap_conf, &cap_timer));
 
-    // IMPORTANT: Capture GPIO 11 instead of 4 so we don't mess up the PWM output pad configuration!
+    // Capture GPIO 4 (PWM output) directly using internal loopback
     mcpwm_cap_channel_handle_t cap_chan_lead = NULL;
     mcpwm_capture_channel_config_t chan_lead_conf = {
-        .gpio_num = GPIO_NUM_11, // User must jumper GPIO 4 -> GPIO 11
+        .gpio_num = GPIO_NUM_4, // Directly capture PWM0B (LEAD High Side)
         .prescale = 1,
         .flags.pos_edge = true,
         .flags.pull_up = true,
+        .flags.io_loop_back = true, // Enable internal loopback (INOUT mode)
     };
     ESP_ERROR_CHECK(mcpwm_new_capture_channel(cap_timer, &chan_lead_conf, &cap_chan_lead));
 

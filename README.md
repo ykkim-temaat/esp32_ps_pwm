@@ -51,6 +51,10 @@ It uses the modern object-oriented MCPWM driver APIs (`driver/mcpwm_prelude.h`) 
   * `GPIO 0` (BOOT button) ➡️ Manually clears Hardware Faults and toggles PWM Output ON/OFF safely via Software Faults.
 * **Onboard LED**:
   * `GPIO 48` ➡️ WS2812 smart RGB LED for status monitoring.
+* **ZC Capture & Auto-Tracking (Simulation)**:
+  * `GPIO 4` ➡️ Captured internally using GPIO Matrix loopback (NO physical jumper required).
+  * `GPIO 10` ➡️ ZC (Zero Crossing) Simulation Output.
+  * `GPIO 9` ➡️ Capture Channel for ZC input (User must jumper `GPIO 10` ➡️ `GPIO 9` to run the tracking simulation).
 
 ### For ESP32
 * **PWM Outputs**:
