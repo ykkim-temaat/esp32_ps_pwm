@@ -814,14 +814,13 @@ esp_err_t pspwm_enable_tracking_capture(mcpwm_unit_t mcpwm_num, int gpio_start, 
         return err;
     }
 
-    // 2. Create Capture Channel for Start Signal (generator pin feedback)
-    // Enable input buffer so Capture unit can read the output pin
-    gpio_set_direction(gpio_start, GPIO_MODE_INPUT_OUTPUT);
+    // 2. Create Capture Channel for Start Signal (typically a generator pin, with loopback enabled)
     mcpwm_capture_channel_config_t chan_start_conf = {
         .gpio_num = gpio_start,
-        .prescale = 1,
+        .prescale = 100, // Hardware decimation: capture every 100th pulse
         .flags.pos_edge = true,
         .flags.pull_up = true,
+        .flags.io_loop_back = true,
     };
     err = mcpwm_new_capture_channel(s_states[mcpwm_num].cap_timer, &chan_start_conf, &s_states[mcpwm_num].cap_chan_start);
     if (err != ESP_OK) {
@@ -832,7 +831,7 @@ esp_err_t pspwm_enable_tracking_capture(mcpwm_unit_t mcpwm_num, int gpio_start, 
     // 3. Create Capture Channel for Zero-Crossing Signal (external input, no loopback)
     mcpwm_capture_channel_config_t chan_zc_conf = {
         .gpio_num = gpio_zc,
-        .prescale = 1,
+        .prescale = 100, // Hardware decimation: capture every 100th pulse
         .flags.pos_edge = true,
         .flags.pull_up = true,
         .flags.io_loop_back = false,
