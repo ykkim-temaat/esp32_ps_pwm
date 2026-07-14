@@ -230,7 +230,7 @@ void mcpwm_example_ps_pwm(void *arg)
                 int state = (loop_counter / 500) % 4;
                 switch(state) {
                     case 0:
-                        printf("STATE 0: Freq 100 kHz | Duty 20%% -> 75%% (Softstart 2s) | LED: GREEN\n");
+                        printf("STATE 0: Freq 100 kHz | Duty 25%% -> 75%% (Softstart 2s) | LED: GREEN\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
                         gpio_set_level(LED_PIN, 1);
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -238,34 +238,34 @@ void mcpwm_example_ps_pwm(void *arg)
                         led_strip_refresh(led_strip);
 #endif
                         pspwm_set_frequency(MCPWM_UNIT_0, 100e3); // 100 kHz
-                        pspwm_set_ps_duty(MCPWM_UNIT_0, 0.2f);    // Start at 20%
+                        pspwm_set_ps_duty(MCPWM_UNIT_0, 0.25f);    // Start at 25%
                         pspwm_set_duty_soft(MCPWM_UNIT_0, 0.75f, 2000); // Soft start to 75% over 2s
                         break;
                     case 1:
-                        printf("STATE 1: Freq 100 kHz | Duty 75%% -> 20%% (Softstart 2s) | LED: YELLOW\n");
+                        printf("STATE 1: Freq 100 kHz | Duty 75%% -> 25%% (Softstart 2s) | LED: YELLOW\n");
 #ifdef CONFIG_IDF_TARGET_ESP32S3
                         led_strip_set_pixel(led_strip, 0, 32, 32, 0); // Yellow
                         led_strip_refresh(led_strip);
 #endif
-                        pspwm_set_duty_soft(MCPWM_UNIT_0, 0.2f, 2000); // Soft start down to 20% over 2s
+                        pspwm_set_duty_soft(MCPWM_UNIT_0, 0.25f, 2000); // Soft start down to 25% over 2s
                         break;
                     case 2:
-                        printf("STATE 2: Freq 200 kHz | Duty 20%% -> 75%% (Softstart 2s) | LED: BLUE\n");
+                        printf("STATE 2: Freq 200 kHz | Duty 25%% -> 75%% (Softstart 2s) | LED: BLUE\n");
 #ifdef CONFIG_IDF_TARGET_ESP32S3
                         led_strip_set_pixel(led_strip, 0, 0, 0, 32); // Blue
                         led_strip_refresh(led_strip);
 #endif
                         pspwm_set_frequency(MCPWM_UNIT_0, 200e3); // 200 kHz
-                        pspwm_set_ps_duty(MCPWM_UNIT_0, 0.2f);
+                        pspwm_set_ps_duty(MCPWM_UNIT_0, 0.25f);
                         pspwm_set_duty_soft(MCPWM_UNIT_0, 0.75f, 2000);
                         break;
                     case 3:
-                        printf("STATE 3: Freq 200 kHz | Duty 75%% -> 20%% (Softstart 2s) | LED: PURPLE\n");
+                        printf("STATE 3: Freq 200 kHz | Duty 75%% -> 25%% (Softstart 2s) | LED: PURPLE\n");
 #ifdef CONFIG_IDF_TARGET_ESP32S3
                         led_strip_set_pixel(led_strip, 0, 32, 0, 32); // Purple
                         led_strip_refresh(led_strip);
 #endif
-                        pspwm_set_duty_soft(MCPWM_UNIT_0, 0.2f, 2000);
+                        pspwm_set_duty_soft(MCPWM_UNIT_0, 0.25f, 2000);
                         break;
                 }
             } else {
