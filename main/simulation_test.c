@@ -1,3 +1,8 @@
+/** @brief ESP32 Phase-Shift-PWM Simulation & Tracking HIL Test
+ * 
+ * 2026-07-08 Yoonki Kim (v1.1.0 - Auto-Tracking PI Control Loop with PLL Lock)
+ * 2026-07-14 Yoonki Kim (v1.2.0 - Hardware prescaler integration and CLI UX updates)
+ */
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>

@@ -19,6 +19,7 @@
  * 2024-05-24 Yoonki Kim (Initial v4.x mod)
  * 2026-07-02 Yoonki Kim (v5.3.4 Migration & Safety features)
  * 2026-07-08 Yoonki Kim (v1.1.0 - Auto-Tracking PI Control Loop with PLL Lock)
+ * 2026-07-14 Yoonki Kim (v1.2.0 - Hardware prescaler integration and CLI UX updates)
  */
 #include <stdio.h>
 
