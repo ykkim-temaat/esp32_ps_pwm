@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 3.16)
+set(sources "ps_pwm.c")
 
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(ps_pwm)
+idf_component_register(SRCS "${sources}"
+                       INCLUDE_DIRS "include"
+                       REQUIRES "driver"
+)
