@@ -56,5 +56,5 @@ dkms.conf
 
 # ESP-IDF specific ignores
 /sdkconfig.old
-/managed_components/
+**/managed_components/
 sdkconfig
