@@ -7,6 +7,11 @@
  * Full-Bridge-, Dual-Active-Bridge- and LLC converters.
  * 
  * @note Migrated to ESP-IDF v5.3.4 (using mcpwm_prelude.h)
+ *
+ * 2024-05-24 Yoonki Kim (Migration esp-idf v4.4.7 from v4.3-beta3)
+ * 2026-07-02 Yoonki Kim (v1.0.0 - esp-idf v5.3.4 Migration & Safety features)
+ * 2026-07-08 Yoonki Kim (v1.1.0 - Auto-Tracking PI Control Loop with PLL Lock)
+ * 2026-07-14 Yoonki Kim (v1.2.0 - Hardware prescaler integration and CLI UX updates)
  */
 #ifndef PS_PWM_H__
 #define PS_PWM_H__

@@ -1,3 +1,13 @@
+/** @file ps_pwm.c
+ * @brief Driver for the MCPWM hardware modules on the Espressif ESP32
+ * or ESP32-S3 SoC for generating a Phase-Shift-PWM waveform between
+ * two pairs of hardware pins. (Not compatible with ESP32-S2)
+ *
+ * 2024-05-24 Yoonki Kim (Migration esp-idf v4.4.7 from v4.3-beta3)
+ * 2026-07-02 Yoonki Kim (v1.0.0 - esp-idf v5.3.4 Migration & Safety features)
+ * 2026-07-08 Yoonki Kim (v1.1.0 - Auto-Tracking PI Control Loop with PLL Lock)
+ * 2026-07-14 Yoonki Kim (v1.2.0 - Hardware prescaler integration and CLI UX updates)
+ */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "stdlib.h"
