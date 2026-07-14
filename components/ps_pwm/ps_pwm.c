@@ -4,6 +4,10 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "ps_pwm.h"
+#include "esp_rom_gpio.h"
+#include "soc/gpio_sig_map.h"
+#include "soc/gpio_periph.h"
+#include "soc/io_mux_reg.h"
 
 static const char *TAG = "ps_pwm.c";
 
@@ -20,6 +24,21 @@ typedef struct {
     mcpwm_fault_input_level_t fault_pin_active_level;
     bool is_initialized;
     bool is_software_disabled;
+    // GPIO pin mapping
+    int gpio_lead_a;
+    int gpio_lead_b;
+    int gpio_lag_a;
+    int gpio_lag_b;
+    // Resonant tracking capture state
+    mcpwm_cap_timer_handle_t cap_timer;
+    mcpwm_cap_channel_handle_t cap_chan_start;
+    mcpwm_cap_channel_handle_t cap_chan_zc;
+    int gpio_start;
+    volatile uint32_t cap_val_start;
+    volatile uint32_t cap_val_zc;
+    volatile bool new_capture;
+    float us_per_tick;
+    volatile uint32_t last_measured_ticks;
 } pspwm_state_t;
 
 // Setpoint values globally shared for frequency, phase and dead-time
@@ -132,8 +151,25 @@ esp_err_t pspwm_init(mcpwm_unit_t mcpwm_num,
     s_setpoints[mcpwm_num]->lag_fed = lag_fed;
     s_setpoints[mcpwm_num]->output_enabled = output_enabled;
 
+    s_states[mcpwm_num].gpio_lead_a = gpio_lead_a;
+    s_states[mcpwm_num].gpio_lead_b = gpio_lead_b;
+    s_states[mcpwm_num].gpio_lag_a = gpio_lag_a;
+    s_states[mcpwm_num].gpio_lag_b = gpio_lag_b;
+
     // Clean up if already initialized to prevent resource leak
     if (s_states[mcpwm_num].is_initialized) {
+        if (s_states[mcpwm_num].cap_chan_start) {
+            mcpwm_del_capture_channel(s_states[mcpwm_num].cap_chan_start);
+            s_states[mcpwm_num].cap_chan_start = NULL;
+        }
+        if (s_states[mcpwm_num].cap_chan_zc) {
+            mcpwm_del_capture_channel(s_states[mcpwm_num].cap_chan_zc);
+            s_states[mcpwm_num].cap_chan_zc = NULL;
+        }
+        if (s_states[mcpwm_num].cap_timer) {
+            mcpwm_del_capture_timer(s_states[mcpwm_num].cap_timer);
+            s_states[mcpwm_num].cap_timer = NULL;
+        }
         mcpwm_del_generator(s_states[mcpwm_num].generators[0][0]);
         mcpwm_del_generator(s_states[mcpwm_num].generators[0][1]);
         mcpwm_del_generator(s_states[mcpwm_num].generators[1][0]);
@@ -211,11 +247,13 @@ esp_err_t pspwm_init(mcpwm_unit_t mcpwm_num,
         .gen_gpio_num = gpio_lead_a,
     };
     err |= mcpwm_new_generator(s_states[mcpwm_num].operators[0], &gen_cfg, &s_states[mcpwm_num].generators[0][0]);
+    
     gen_cfg.gen_gpio_num = gpio_lead_b;
     err |= mcpwm_new_generator(s_states[mcpwm_num].operators[0], &gen_cfg, &s_states[mcpwm_num].generators[0][1]);
 
     gen_cfg.gen_gpio_num = gpio_lag_a;
     err |= mcpwm_new_generator(s_states[mcpwm_num].operators[1], &gen_cfg, &s_states[mcpwm_num].generators[1][0]);
+    
     gen_cfg.gen_gpio_num = gpio_lag_b;
     err |= mcpwm_new_generator(s_states[mcpwm_num].operators[1], &gen_cfg, &s_states[mcpwm_num].generators[1][1]);
 
@@ -293,6 +331,12 @@ esp_err_t pspwm_init(mcpwm_unit_t mcpwm_num,
     if (err == ESP_OK) {
         s_states[mcpwm_num].is_initialized = true;
         ESP_LOGI(TAG, "pspwm_init success!");
+        
+        // If tracking capture was configured before init, enable the input buffer without resetting the IOMUX
+        if (s_states[mcpwm_num].cap_chan_start) {
+            PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[s_states[mcpwm_num].gpio_start]);
+            ESP_LOGI(TAG, "Re-enabled input buffer on start pin %d for internal loopback capture", s_states[mcpwm_num].gpio_start);
+        }
     } else {
         ESP_LOGE(TAG, "pspwm_init failed during setup!");
         return ESP_FAIL;
@@ -703,4 +747,119 @@ esp_err_t pspwm_get_clk_conf_ptr(mcpwm_unit_t mcpwm_num,
                                  pspwm_clk_conf_t** clk_conf) {
     *clk_conf = &s_clk_conf;
     return ESP_OK;
+}
+
+static void (*s_start_capture_cb[2])(uint32_t cap_val, void* arg) = {NULL, NULL};
+static void* s_start_capture_cb_arg[2] = {NULL, NULL};
+
+void pspwm_register_start_capture_callback(mcpwm_unit_t mcpwm_num, void (*cb)(uint32_t cap_val, void* arg), void* arg) {
+    if (mcpwm_num < 2) {
+        s_start_capture_cb[mcpwm_num] = cb;
+        s_start_capture_cb_arg[mcpwm_num] = arg;
+    }
+}
+
+static bool IRAM_ATTR pspwm_cap_cb_start(mcpwm_cap_channel_handle_t cap_chan, const mcpwm_capture_event_data_t *edata, void *user_ctx) {
+    int mcpwm_num = (int)(intptr_t)user_ctx;
+    s_states[mcpwm_num].cap_val_start = edata->cap_value;
+    if (s_start_capture_cb[mcpwm_num]) {
+        s_start_capture_cb[mcpwm_num](edata->cap_value, s_start_capture_cb_arg[mcpwm_num]);
+    }
+    return false;
+}
+
+static bool IRAM_ATTR pspwm_cap_cb_zc(mcpwm_cap_channel_handle_t cap_chan, const mcpwm_capture_event_data_t *edata, void *user_ctx) {
+    int mcpwm_num = (int)(intptr_t)user_ctx;
+    uint32_t start = s_states[mcpwm_num].cap_val_start;
+    uint32_t zc = edata->cap_value;
+    s_states[mcpwm_num].cap_val_zc = zc;
+    
+    if (zc > start) {
+        uint32_t diff = zc - start;
+        if (diff < 800000) {
+            s_states[mcpwm_num].last_measured_ticks = diff; // Integer math only in ISR
+            s_states[mcpwm_num].new_capture = true;
+        }
+    }
+    return false;
+}
+
+
+
+esp_err_t pspwm_enable_tracking_capture(mcpwm_unit_t mcpwm_num, int gpio_start, int gpio_zc) {
+    if (mcpwm_num != MCPWM_UNIT_0 && mcpwm_num != MCPWM_UNIT_1) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    esp_err_t err = ESP_OK;
+    
+    // 1. Create Capture Timer
+    mcpwm_capture_timer_config_t cap_conf = {
+        .clk_src = MCPWM_CAPTURE_CLK_SRC_DEFAULT,
+        .group_id = mcpwm_num,
+    };
+    err = mcpwm_new_capture_timer(&cap_conf, &s_states[mcpwm_num].cap_timer);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create capture timer");
+        return err;
+    }
+
+    // 2. Create Capture Channel for Start Signal (typically a generator pin, with loopback enabled)
+    mcpwm_capture_channel_config_t chan_start_conf = {
+        .gpio_num = gpio_start,
+        .prescale = 100, // Hardware decimation: capture every 100th pulse
+        .flags.pos_edge = true,
+        .flags.pull_up = true,
+        .flags.io_loop_back = true,
+    };
+    err = mcpwm_new_capture_channel(s_states[mcpwm_num].cap_timer, &chan_start_conf, &s_states[mcpwm_num].cap_chan_start);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create start capture channel");
+        return err;
+    }
+
+    // 3. Create Capture Channel for Zero-Crossing Signal (external input, no loopback)
+    mcpwm_capture_channel_config_t chan_zc_conf = {
+        .gpio_num = gpio_zc,
+        .prescale = 100, // Hardware decimation: capture every 100th pulse
+        .flags.pos_edge = true,
+        .flags.pull_up = true,
+        .flags.io_loop_back = false,
+    };
+    err = mcpwm_new_capture_channel(s_states[mcpwm_num].cap_timer, &chan_zc_conf, &s_states[mcpwm_num].cap_chan_zc);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create ZC capture channel");
+        return err;
+    }
+
+    // 4. Register Event Callbacks
+    mcpwm_capture_event_callbacks_t cbs_start = { .on_cap = pspwm_cap_cb_start };
+    mcpwm_capture_event_callbacks_t cbs_zc = { .on_cap = pspwm_cap_cb_zc };
+    err |= mcpwm_capture_channel_register_event_callbacks(s_states[mcpwm_num].cap_chan_start, &cbs_start, (void*)(intptr_t)mcpwm_num);
+    err |= mcpwm_capture_channel_register_event_callbacks(s_states[mcpwm_num].cap_chan_zc, &cbs_zc, (void*)(intptr_t)mcpwm_num);
+
+    // 5. Enable Channels and Start Timer
+    err |= mcpwm_capture_channel_enable(s_states[mcpwm_num].cap_chan_start);
+    err |= mcpwm_capture_channel_enable(s_states[mcpwm_num].cap_chan_zc);
+    err |= mcpwm_capture_timer_enable(s_states[mcpwm_num].cap_timer);
+    err |= mcpwm_capture_timer_start(s_states[mcpwm_num].cap_timer);
+
+    // Get capture resolution to convert ticks to microseconds
+    uint32_t cap_clk_hz;
+    mcpwm_capture_timer_get_resolution(s_states[mcpwm_num].cap_timer, &cap_clk_hz);
+    s_states[mcpwm_num].us_per_tick = 1000000.0f / cap_clk_hz;
+    s_states[mcpwm_num].new_capture = false;
+    s_states[mcpwm_num].cap_val_start = 0;
+    s_states[mcpwm_num].cap_val_zc = 0;
+    s_states[mcpwm_num].last_measured_ticks = 0;
+    s_states[mcpwm_num].gpio_start = gpio_start;
+
+    return err;
+}
+
+float pspwm_get_measured_delay_us(mcpwm_unit_t mcpwm_num) {
+    if (mcpwm_num != MCPWM_UNIT_0 && mcpwm_num != MCPWM_UNIT_1) {
+        return -1.0f;
+    }
+    return s_states[mcpwm_num].last_measured_ticks * s_states[mcpwm_num].us_per_tick;
 }

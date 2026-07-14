@@ -1,0 +1,7 @@
+# Antigravity Workspace Rules
+
+- `idf.py build` 명령어는 사용자 별도 승인 없이 실행을 제안 및 수행할 수 있습니다.
+- 코드를 수정한 후에는 반드시 빌드(성공 여부 검증)를 수행하고 성공한 상태의 결과를 확인하여 사용자에게 보고해야 합니다.
+- 비대화형 쉘 환경에서 빌드를 수행할 때는 사용자의 알리아스 설정을 활성화하기 위해 OS와 쉘 종류에 맞는 설정 파일을 소싱하고 `get_idf` 명령어를 실행한 후에 `idf.py build`를 수행합니다.
+  - Linux (Bash): `~/.bashrc`를 소싱하고 `get_idf` 실행 (예: `bash -i -c "get_idf && idf.py build"`)
+  - macOS (Zsh): `~/.zshrc`를 소싱하고 `get_idf` 실행 (예: `zsh -i -c "get_idf && idf.py build"`)

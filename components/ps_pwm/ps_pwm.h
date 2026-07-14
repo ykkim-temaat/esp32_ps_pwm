@@ -306,6 +306,29 @@ esp_err_t pspwm_get_setpoint_limits_ptr(mcpwm_unit_t mcpwm_num,
 esp_err_t pspwm_get_clk_conf_ptr(mcpwm_unit_t mcpwm_num,
                                  pspwm_clk_conf_t** clk_conf);
 
+/** @brief Enable resonant tracking capture channels (start signal and zero-crossing signal).
+ * 
+ * @param mcpwm_num: PWM unit number (enum, MCPWM_UNIT_0 = 0, MCPWM_UNIT_1 = 1)
+ * @param gpio_start: GPIO pin for the starting time reference (e.g. LEAD Leg High-Side)
+ * @param gpio_zc: GPIO pin for the Zero-Crossing current pulse input
+ */
+esp_err_t pspwm_enable_tracking_capture(mcpwm_unit_t mcpwm_num, int gpio_start, int gpio_zc);
+
+/** @brief Get the measured delay time in microseconds (us) between the start signal and zero-crossing pulse.
+ * 
+ * @param mcpwm_num: PWM unit number (enum, MCPWM_UNIT_0 = 0, MCPWM_UNIT_1 = 1)
+ * @return Measured delay in microseconds (us). Returns 0.0f if no capture has occurred or is invalid.
+ */
+float pspwm_get_measured_delay_us(mcpwm_unit_t mcpwm_num);
+
+/** @brief Register a callback function to be called when the start capture event occurs.
+ * 
+ * @param mcpwm_num: PWM unit number (enum, MCPWM_UNIT_0 = 0, MCPWM_UNIT_1 = 1)
+ * @param cb: Callback function pointer
+ * @param arg: User context pointer passed to callback
+ */
+void pspwm_register_start_capture_callback(mcpwm_unit_t mcpwm_num, void (*cb)(uint32_t cap_val, void* arg), void* arg);
+
 #ifdef __cplusplus
 }
 #endif

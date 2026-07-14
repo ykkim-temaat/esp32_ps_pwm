@@ -10,6 +10,7 @@ It uses the modern object-oriented MCPWM driver APIs (`driver/mcpwm_prelude.h`) 
 * LLC resonant converters
 
 ## Development Status
+* **Version**: **v1.2.0**
 * **ESP-IDF Compatibility**: Developed and verified on **ESP-IDF v5.3.4** (branch: `esp-idf-v5.3`).
 * **Legacy Support**: Previous tags (`v1.1.1` and earlier) support ESP-IDF v4.4.7 and legacy direct-register (`mcpwm_dev_t`) APIs.
 
@@ -52,10 +53,9 @@ It uses the modern object-oriented MCPWM driver APIs (`driver/mcpwm_prelude.h`) 
 * **Onboard LED**:
   * `GPIO 48` ➡️ WS2812 smart RGB LED for status monitoring.
 * **ZC Capture & Auto-Tracking (Simulation)**:
-  * `GPIO 4` ➡️ Captured internally using GPIO Matrix loopback (NO physical jumper required).
+  * `GPIO 4` ➡️ Captured internally using IOMUX `PIN_INPUT_ENABLE` loopback (NO physical jumper required).
   * `GPIO 10` ➡️ ZC (Zero Crossing) Simulation Output.
   * `GPIO 9` ➡️ Capture Channel for ZC input (User must jumper `GPIO 10` ➡️ `GPIO 9` to run the tracking simulation).
-
 ### For ESP32
 * **PWM Outputs**:
   * `GPIO 27` ➡️ LEAD Leg Low-Side (PWM0A)
