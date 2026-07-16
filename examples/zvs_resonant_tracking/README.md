@@ -22,12 +22,15 @@
 
 | 함수 | 설명 |
 |---|---|
-| [pspwm_enable_tracking_capture()](file:///home/yoonki/esp/myWorks/esp32_ps_pwm/include/ps_pwm.h#L320) | Start 신호 핀과 ZC 신호 핀을 캡처 모듈에 연결하고 활성화합니다. |
-| [pspwm_register_start_capture_callback()](file:///home/yoonki/esp/myWorks/esp32_ps_pwm/include/ps_pwm.h#L335) | (선택) Start 캡처 시점에 호출될 인터럽트 콜백을 등록합니다. |
+| [pspwm_enable_tracking_capture()](file:///home/yoonki/esp/myWorks/esp32_ps_pwm/include/ps_pwm.h#L320) | Start 신호 핀과 ZC 신호 핀을 캡처 모듈에 연결하고 활성화합니다. 지연 시간 측정을 위해 필수적으로 호출되어야 합니다. |
+| [pspwm_register_start_capture_callback()](file:///home/yoonki/esp/myWorks/esp32_ps_pwm/include/ps_pwm.h#L335) | (선택) Start 캡처 시점에 호출될 인터럽트 콜백을 등록합니다. (아래 4장의 'Capture Monitor Task' 설명에서 세부 활용법 참조) |
 
 ```c
 // 캡처 채널 활성화 (예: Start 핀 = GPIO 4, ZC 입력 핀 = GPIO 9)
 esp_err_t err = pspwm_enable_tracking_capture(MCPWM_UNIT_0, GPIO_NUM_4, GPIO_NUM_9);
+
+// (선택) Start 캡처 콜백 함수 원형
+// void pspwm_register_start_capture_callback(mcpwm_unit_t mcpwm_num, void (*cb)(uint32_t cap_val, void* arg), void* arg);
 ```
 
 ### 2.2. 지연 시간 측정
@@ -130,13 +133,16 @@ graph TD
     A --> D(Freq Tracking PI Task)
     A --> E(Terminal/Comms Task)
 
-    B --> |1. 캡처 초기화 & 모니터링| B
-    C --> |2. Fault 보호 & Soft Start| C
-    D --> |3. 10ms 주기 PI 제어루프| D
+    B --> |1. 캡처 초기화 & 모니터링<br>pspwm_enable_tracking_capture<br>pspwm_register_start_capture_callback| B
+    C --> |2. Fault 보호 & Soft Start<br>pspwm_get_hw_fault_shutdown_occurred<br>pspwm_set_duty_soft| C
+    D --> |3. 10ms 주기 PI 제어루프<br>pspwm_get_measured_delay_us<br>pspwm_set_frequency| D
     E --> |4. 사용자 명령 수신| E
 ```
 
-1. **Capture Monitor Task**: `pspwm_enable_tracking_capture()`를 호출하고, 측정된 딜레이 로그를 주기적으로 출력하여 모니터링합니다. 캡처 초기화가 완료되었음을 플래그로 설정하여 메인 태스크가 이를 기다리도록 동기화합니다.
+1. **Capture Monitor Task**: 
+   - `pspwm_enable_tracking_capture()`를 호출하여 ZC 측정용 캡처 하드웨어를 초기화하고, 측정된 딜레이 로그를 주기적으로 출력하여 모니터링합니다.
+   - HIL(Hardware-in-the-Loop) 테스트 시 시뮬레이션용 ZC 펄스를 생성하거나, 특정 하드웨어와의 연동 시점을 정교하게 맞추기 위해 `pspwm_register_start_capture_callback()`을 사용하여 리딩 레그(Start) 캡처 시점에 인터럽트 콜백을 동작시킬 수 있습니다.
+   - 캡처 초기화가 완료되었음을 플래그로 설정하여 메인 태스크가 이를 기다리도록 동기화합니다.
 2. **Main PS-PWM Task**: `pspwm_init_symmetrical()`로 기본 출력을 설정하고 최우선적으로 `pspwm_get_hw_fault_shutdown_occurred()`를 폴링하여 하드웨어 Fault 시 신속하게 대응합니다. 사용자의 On/Off 명령 시 `pspwm_set_duty_soft()`로 안전하게 기동/정지합니다.
 3. **Freq Tracking PI Task**: 10ms 주기로 `pspwm_get_measured_delay_us()`를 읽고, 속도형 PI 제어로 도출된 주파수를 `pspwm_set_frequency()`를 통해 하드웨어에 업데이트합니다.
 4. **Comms/Terminal Task**: 사용자의 명령(주파수 수동 설정, 트래킹 On/Off 설정, 게인 값 조절 등)을 비동기적으로 처리합니다.
