@@ -280,26 +280,9 @@ esp_err_t pspwm_init(mcpwm_unit_t mcpwm_num,
     err |= mcpwm_generator_set_action_on_compare_event(s_states[mcpwm_num].generators[1][0],
         MCPWM_GEN_COMPARE_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, s_states[mcpwm_num].comparators[1], MCPWM_GEN_ACTION_LOW));
 
-    // 7. Setup Dead Time (makes Generator B complementary to Generator A with delay)
-    mcpwm_dead_time_config_t dt_a = {
-        .posedge_delay_ticks = (uint32_t)(lead_red * s_clk_conf.base_clk),
-        .negedge_delay_ticks = 0,
-        .flags.invert_output = false,
-    };
-    mcpwm_dead_time_config_t dt_b = {
-        .posedge_delay_ticks = 0,
-        .negedge_delay_ticks = (uint32_t)(lead_fed * s_clk_conf.base_clk),
-        .flags.invert_output = true,
-    };
-    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[0][0], s_states[mcpwm_num].generators[0][0], &dt_a);
-    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[0][0], s_states[mcpwm_num].generators[0][1], &dt_b);
-
-    dt_a.posedge_delay_ticks = (uint32_t)(lag_red * s_clk_conf.base_clk);
-    dt_b.negedge_delay_ticks = (uint32_t)(lag_fed * s_clk_conf.base_clk);
-    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[1][0], s_states[mcpwm_num].generators[1][0], &dt_a);
-    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[1][0], s_states[mcpwm_num].generators[1][1], &dt_b);
-
-    // 8. Create a Soft Fault for securely disabling the PWM output (bypasses Dead-Time inversion)
+    // 7. Create a Soft Fault for securely disabling the PWM output
+    // Must be done BEFORE dead-time configuration to prevent an initialization glitch
+    // where generator B briefly pulses HIGH due to dead-time inversion before the soft fault is applied.
     mcpwm_soft_fault_config_t soft_fault_config = {};
     err |= mcpwm_new_soft_fault(&soft_fault_config, &s_states[mcpwm_num].soft_fault[0]);
     err |= mcpwm_new_soft_fault(&soft_fault_config, &s_states[mcpwm_num].soft_fault[1]);
@@ -327,6 +310,27 @@ esp_err_t pspwm_init(mcpwm_unit_t mcpwm_num,
 
     // Disable output initially by triggering the soft fault to be safe
     err |= pspwm_disable_output(mcpwm_num);
+
+    // 8. Setup Dead Time (makes Generator B complementary to Generator A with delay)
+    // The fault module is downstream of the dead-time module, so the output will remain securely LOW 
+    // despite the dead-time inversion applied here.
+    mcpwm_dead_time_config_t dt_a = {
+        .posedge_delay_ticks = (uint32_t)(lead_red * s_clk_conf.base_clk),
+        .negedge_delay_ticks = 0,
+        .flags.invert_output = false,
+    };
+    mcpwm_dead_time_config_t dt_b = {
+        .posedge_delay_ticks = 0,
+        .negedge_delay_ticks = (uint32_t)(lead_fed * s_clk_conf.base_clk),
+        .flags.invert_output = true,
+    };
+    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[0][0], s_states[mcpwm_num].generators[0][0], &dt_a);
+    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[0][0], s_states[mcpwm_num].generators[0][1], &dt_b);
+
+    dt_a.posedge_delay_ticks = (uint32_t)(lag_red * s_clk_conf.base_clk);
+    dt_b.negedge_delay_ticks = (uint32_t)(lag_fed * s_clk_conf.base_clk);
+    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[1][0], s_states[mcpwm_num].generators[1][0], &dt_a);
+    err |= mcpwm_generator_set_dead_time(s_states[mcpwm_num].generators[1][0], s_states[mcpwm_num].generators[1][1], &dt_b);
 
     // Enable and Start Timers
     err |= mcpwm_timer_enable(s_states[mcpwm_num].timers[0]);
