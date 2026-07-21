@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "stdlib.h"
+#include <math.h>
 #include "esp_err.h"
 #include "esp_log.h"
 #include "ps_pwm.h"
@@ -875,5 +876,28 @@ float pspwm_get_measured_delay_us(mcpwm_unit_t mcpwm_num) {
     if (mcpwm_num != MCPWM_UNIT_0 && mcpwm_num != MCPWM_UNIT_1) {
         return -1.0f;
     }
-    return s_states[mcpwm_num].last_measured_ticks * s_states[mcpwm_num].us_per_tick;
+    
+    // If output is disabled, return 0 to prevent stale data
+    if (s_setpoints[mcpwm_num] != NULL && !s_setpoints[mcpwm_num]->output_enabled) {
+        return 0.0f;
+    }
+
+    float raw_delay_us = s_states[mcpwm_num].last_measured_ticks * s_states[mcpwm_num].us_per_tick;
+
+    if (s_setpoints[mcpwm_num] != NULL && s_setpoints[mcpwm_num]->frequency > 0) {
+        float period_us = 1000000.0f / s_setpoints[mcpwm_num]->frequency;
+        
+        // 1. Cycle Slip Correction
+        if (raw_delay_us >= period_us && period_us > 0) {
+            raw_delay_us = fmodf(raw_delay_us, period_us);
+        }
+        
+        // 2. Edge Polarity Inversion Correction
+        float half_period_us = period_us / 2.0f;
+        if (raw_delay_us > half_period_us) {
+            raw_delay_us -= half_period_us;
+        }
+    }
+
+    return raw_delay_us;
 }
